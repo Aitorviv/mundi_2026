@@ -27,31 +27,46 @@ export async function middleware(request: NextRequest) {
 
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Rutas protegidas — redirige al login si no hay sesión
-  const protectedRoutes = ['/apuestas', '/clasificacion', '/partidos', '/admin']
-  const isProtected = protectedRoutes.some(route =>
-    request.nextUrl.pathname.startsWith(route)
-  )
+  const pathname = request.nextUrl.pathname
 
-  if (isProtected && !user) {
+  // Rutas públicas — siempre accesibles
+  const publicRoutes = ['/login', '/auth', '/pendiente', '/onboarding']
+  const isPublic = publicRoutes.some(route => pathname.startsWith(route))
+  if (isPublic) return supabaseResponse
+
+  // Sin sesión → login
+  if (!user) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     return NextResponse.redirect(url)
   }
 
-  // Solo admins pueden acceder a /admin
-  if (request.nextUrl.pathname.startsWith('/admin') && user) {
-    const { data: participant } = await supabase
-      .from('participants')
-      .select('is_admin')
-      .eq('id', user.id)
-      .single()
+  // Comprobar aprobación y rol
+  const { data: participant } = await supabase
+    .from('participants')
+    .select('approved, is_admin')
+    .eq('id', user.id)
+    .single()
 
-    if (!participant?.is_admin) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/'
-      return NextResponse.redirect(url)
-    }
+  // Sin perfil todavía → onboarding
+  if (!participant) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/onboarding'
+    return NextResponse.redirect(url)
+  }
+
+  // No aprobado → pendiente
+  if (!participant.approved && !pathname.startsWith('/pendiente')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/pendiente'
+    return NextResponse.redirect(url)
+  }
+
+  // Solo admins en /admin
+  if (pathname.startsWith('/admin') && !participant.is_admin) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/apuestas'
+    return NextResponse.redirect(url)
   }
 
   return supabaseResponse
