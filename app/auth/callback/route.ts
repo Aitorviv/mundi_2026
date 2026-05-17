@@ -10,14 +10,36 @@ export async function GET(request: Request) {
     const { data, error } = await supabase.auth.exchangeCodeForSession(code)
 
     if (!error && data.user) {
-      // Crear el perfil en participants si no existe
-      await supabase.from('participants').upsert(
-        {
+      // Comprobar si ya tiene perfil
+      const { data: existing } = await supabase
+        .from('participants')
+        .select('id, approved')
+        .eq('id', data.user.id)
+        .single()
+
+      if (!existing) {
+        // Nuevo usuario — crear perfil pendiente de aprobación
+        await supabase.from('participants').insert({
           id: data.user.id,
           name: data.user.email?.split('@')[0] ?? 'Participante',
-        },
-        { onConflict: 'id', ignoreDuplicates: true }
-      )
+          display_name: null,
+          approved: false,
+          is_admin: false,
+        })
+
+        // Notificar al admin
+        await fetch(`${origin}/api/notify-admin`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userEmail: data.user.email }),
+        }).catch(() => {})
+
+        return NextResponse.redirect(`${origin}/pendiente`)
+      }
+
+      if (!existing.approved) {
+        return NextResponse.redirect(`${origin}/pendiente`)
+      }
 
       return NextResponse.redirect(`${origin}/apuestas`)
     }
