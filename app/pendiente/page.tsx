@@ -1,62 +1,91 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 
-export default function OnboardingPage() {
-  const [name, setName] = useState('')
-  const [loading, setLoading] = useState(false)
+export default function PendientePage() {
+  const [checking, setChecking] = useState(false)
+  const [email, setEmail] = useState('')
+  const [resent, setResent] = useState(false)
   const router = useRouter()
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!name.trim()) return
-    setLoading(true)
+  useEffect(() => {
+    // Guardar el email del usuario para poder reenviar magic link
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => {
+      if (data.user?.email) setEmail(data.user.email)
+    })
+  }, [])
 
+  async function checkApproval() {
+    setChecking(true)
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    if (!user) {
+      router.push('/login')
+      return
+    }
 
-    await supabase
+    const { data } = await supabase
       .from('participants')
-      .update({ display_name: name.trim(), name: name.trim() })
+      .select('approved')
       .eq('id', user.id)
+      .single()
 
-    router.push('/pendiente')
+    if (data?.approved) {
+      router.push('/apuestas')
+    } else {
+      setChecking(false)
+      alert('Aún no has sido aprobado. El admin recibirá un aviso en breve.')
+    }
+  }
+
+  async function resendMagicLink() {
+    if (!email) return
+    const supabase = createClient()
+    await supabase.auth.signInWithOtp({
+      email,
+      options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+    })
+    setResent(true)
   }
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gray-950 px-4">
-      <div className="w-full max-w-sm">
-        <div className="text-center mb-8">
-          <div className="text-5xl mb-3">👋</div>
-          <h1 className="text-2xl font-bold text-white">¡Bienvenido!</h1>
-          <p className="text-gray-400 text-sm mt-1">¿Cómo quieres aparecer en la porra?</p>
+      <div className="w-full max-w-sm text-center space-y-4">
+        <div className="text-5xl">⏳</div>
+        <h1 className="text-2xl font-bold text-white">Solicitud enviada</h1>
+        <p className="text-gray-400 text-sm leading-relaxed">
+          Tu registro está pendiente de aprobación. El administrador recibirá
+          un aviso y te dará acceso en breve.
+        </p>
+
+        {/* Botón para comprobar si ya fue aprobado */}
+        <button
+          onClick={checkApproval}
+          disabled={checking}
+          className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-semibold py-3 rounded-lg transition-colors"
+        >
+          {checking ? 'Comprobando...' : '¿Ya me aprobaron? Entrar →'}
+        </button>
+
+        {/* Reenviar magic link */}
+        <div className="pt-2 border-t border-gray-800">
+          <p className="text-gray-500 text-xs mb-2">
+            ¿El enlace del email ha caducado?
+          </p>
+          {resent ? (
+            <p className="text-green-400 text-sm">✓ Enlace reenviado a {email}</p>
+          ) : (
+            <button
+              onClick={resendMagicLink}
+              className="text-blue-400 hover:text-blue-300 text-sm underline transition-colors"
+            >
+              Reenviar magic link
+            </button>
+          )}
         </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-sm text-gray-300 mb-1.5">Tu nombre</label>
-            <input
-              type="text"
-              required
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Ej: Mikel, Ane, El Profeta..."
-              maxLength={30}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg px-4 py-3 text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading || !name.trim()}
-            className="w-full bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-lg transition-colors"
-          >
-            {loading ? 'Guardando...' : 'Continuar →'}
-          </button>
-        </form>
       </div>
     </main>
   )

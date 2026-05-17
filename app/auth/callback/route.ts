@@ -34,13 +34,15 @@ export async function GET(request: Request) {
           body: JSON.stringify({ userEmail: data.user.email }),
         }).catch(() => {})
 
-        return NextResponse.redirect(`${origin}/pendiente`)
+        // Ir a onboarding para poner nombre
+        return NextResponse.redirect(`${origin}/onboarding`)
       }
 
       if (!existing.approved) {
         return NextResponse.redirect(`${origin}/pendiente`)
       }
 
+      // Aprobado — ir a apuestas
       return NextResponse.redirect(`${origin}/apuestas`)
     }
   }
