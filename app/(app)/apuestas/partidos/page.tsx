@@ -230,7 +230,7 @@ function MatchRow({
           <span className="text-sm font-medium text-right hidden sm:block">
             {match.home_team.name}
           </span>
-          <span className="text-xl">{match.home_team.flag_emoji}</span>
+          <span className="text-xl flag-emoji">{match.home_team.flag_emoji}</span>
         </div>
 
         {/* Inputs del marcador */}
@@ -268,7 +268,7 @@ function MatchRow({
 
         {/* Equipo visitante */}
         <div className="flex items-center gap-2 flex-1">
-          <span className="text-xl">{match.away_team.flag_emoji}</span>
+          <span className="text-xl flag-emoji">{match.away_team.flag_emoji}</span>
           <span className="text-sm font-medium hidden sm:block">
             {match.away_team.name}
           </span>

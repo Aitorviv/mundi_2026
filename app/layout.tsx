@@ -16,6 +16,12 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
+      <head>
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"
+        />
+      </head>
       <body className={`${geist.className} bg-gray-950 text-white min-h-screen`}>
         {children}
       </body>
