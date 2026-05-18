@@ -2,6 +2,26 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --fifa-gold: #C9A84C;
+  --fifa-red: #C8102E;
+  --fifa-blue: #1A56C4;
+  --fifa-dark: #05080F;
+  --fifa-navy: #0D1221;
+}
+
+body {
+  background: var(--fifa-dark);
+  color: #ffffff;
+}
+
 .flag-emoji {
   font-family: 'Noto Color Emoji', sans-serif;
 }
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }

@@ -22,7 +22,7 @@ export default function RootLayout({
           href="https://fonts.googleapis.com/css2?family=Noto+Color+Emoji&display=swap"
         />
       </head>
-      <body className={`${geist.className} bg-gray-950 text-white min-h-screen`}>
+      <body className={geist.className} style={{ background: '#05080F', minHeight: '100vh' }}>
         {children}
       </body>
     </html>

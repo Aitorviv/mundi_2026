@@ -28,40 +28,30 @@ export default function ApuestasPartidosPage() {
   const [loading, setLoading] = useState(true)
   const [activeMatchday, setActiveMatchday] = useState(1)
 
-  useEffect(() => {
-    loadData()
-  }, [])
+  useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
 
-    // Cargar partidos de grupos con equipos
     const { data: matchesData } = await supabase
       .from('matches')
-      .select(`
-        id, match_number, group_name, matchday, played_at, locked_at,
-        home_team:home_team_id(id, name, flag_emoji),
-        away_team:away_team_id(id, name, flag_emoji)
-      `)
+      .select('id, match_number, group_name, matchday, played_at, locked_at, home_team:home_team_id(id, name, flag_emoji), away_team:away_team_id(id, name, flag_emoji)')
       .eq('phase', 'group')
       .order('match_number')
 
-    // Cargar apuestas existentes
     const { data: betsData } = await supabase
       .from('match_bets')
       .select('match_id, home_goals_bet, away_goals_bet')
       .eq('participant_id', user.id)
 
     if (matchesData) setMatches(matchesData as unknown as Match[])
-
     if (betsData) {
-      const betsMap: Record<number, Bet> = {}
-      betsData.forEach(b => { betsMap[b.match_id] = b })
-      setBets(betsMap)
+      const map: Record<number, Bet> = {}
+      betsData.forEach(b => { map[b.match_id] = b })
+      setBets(map)
     }
-
     setLoading(false)
   }
 
@@ -69,79 +59,66 @@ export default function ApuestasPartidosPage() {
     const supabase = createClient()
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return
-
     setSaving(matchId)
-
     await supabase.from('match_bets').upsert(
-      {
-        participant_id: user.id,
-        match_id: matchId,
-        home_goals_bet: home,
-        away_goals_bet: away,
-      },
+      { participant_id: user.id, match_id: matchId, home_goals_bet: home, away_goals_bet: away },
       { onConflict: 'participant_id,match_id' }
     )
-
     setBets(prev => ({ ...prev, [matchId]: { match_id: matchId, home_goals_bet: home, away_goals_bet: away } }))
     setSaving(null)
     setSaved(matchId)
     setTimeout(() => setSaved(null), 1500)
   }
 
-  function isLocked(lockedAt: string) {
-    return new Date(lockedAt) < new Date()
-  }
+  function isLocked(lockedAt: string) { return new Date(lockedAt) < new Date() }
 
-  const matchdays = [1, 2, 3]
   const filtered = matches.filter(m => m.matchday === activeMatchday)
   const groups = [...new Set(filtered.map(m => m.group_name))].sort()
-
   const totalBets = Object.keys(bets).length
   const totalMatches = matches.length
+  const pct = totalMatches ? Math.round((totalBets / totalMatches) * 100) : 0
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-gray-400">Cargando partidos...</div>
-      </div>
-    )
-  }
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase' }}>Cargando partidos...</p>
+    </div>
+  )
 
   return (
-    <div className="space-y-6">
+    <div style={{ paddingTop: '24px', paddingBottom: '40px' }}>
       {/* Cabecera */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">⚽ Resultados de partidos</h1>
-          <p className="text-gray-400 text-sm mt-1">
-            {totalBets} / {totalMatches} partidos apostados
-          </p>
+      <div style={{ marginBottom: '20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+          <span style={{ fontSize: '9px', color: '#C8102E', letterSpacing: '3px', textTransform: 'uppercase', background: 'rgba(200,16,46,0.12)', border: '0.5px solid rgba(200,16,46,0.3)', padding: '3px 8px', borderRadius: '20px' }}>Fase de grupos</span>
+          <span style={{ fontSize: '9px', color: '#5b8ff9', letterSpacing: '2px', textTransform: 'uppercase', background: 'rgba(26,86,196,0.12)', border: '0.5px solid rgba(26,86,196,0.3)', padding: '3px 8px', borderRadius: '20px' }}>3 pts · resultado exacto</span>
         </div>
-        {/* Barra de progreso */}
-        <div className="hidden sm:block w-32">
-          <div className="bg-gray-800 rounded-full h-2">
-            <div
-              className="bg-blue-500 h-2 rounded-full transition-all"
-              style={{ width: `${totalMatches ? (totalBets / totalMatches) * 100 : 0}%` }}
-            />
+        <h1 style={{ fontSize: '20px', fontWeight: 500, color: '#ffffff', marginBottom: '3px' }}>Resultados de partidos</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '10px' }}>
+          <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1A56C4 0%, #C9A84C 60%, #C8102E 100%)', borderRadius: '2px', transition: 'width 0.5s' }} />
           </div>
-          <p className="text-xs text-gray-500 mt-1 text-right">
-            {totalMatches ? Math.round((totalBets / totalMatches) * 100) : 0}%
-          </p>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', minWidth: '50px', textAlign: 'right' }}>{totalBets} / {totalMatches}</span>
         </div>
       </div>
 
-      {/* Selector de jornada */}
-      <div className="flex gap-2">
-        {matchdays.map(j => (
+      {/* Tabs jornada */}
+      <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
+        {[1, 2, 3].map(j => (
           <button
             key={j}
             onClick={() => setActiveMatchday(j)}
-            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-              activeMatchday === j
-                ? 'bg-blue-600 text-white'
-                : 'bg-gray-900 text-gray-400 hover:text-white border border-gray-800'
-            }`}
+            style={{
+              fontSize: '10px',
+              color: activeMatchday === j ? '#C9A84C' : 'rgba(255,255,255,0.28)',
+              padding: '10px 16px',
+              letterSpacing: '1px',
+              textTransform: 'uppercase',
+              background: 'none',
+              border: 'none',
+              borderBottom: activeMatchday === j ? '2px solid #C9A84C' : '2px solid transparent',
+              cursor: 'pointer',
+              transition: 'all 0.15s',
+            }}
           >
             Jornada {j}
           </button>
@@ -150,146 +127,101 @@ export default function ApuestasPartidosPage() {
 
       {/* Partidos por grupo */}
       {groups.map(group => (
-        <div key={group}>
-          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+        <div key={group} style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '9px', fontWeight: 500, color: '#5b8ff9', letterSpacing: '3px', textTransform: 'uppercase', padding: '0 0 6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             Grupo {group}
-          </h2>
-          <div className="space-y-2">
-            {filtered
-              .filter(m => m.group_name === group)
-              .map(match => {
-                const bet = bets[match.id]
-                const locked = isLocked(match.locked_at)
-                const isSaving = saving === match.id
-                const isSaved = saved === match.id
-
-                return (
-                  <MatchRow
-                    key={match.id}
-                    match={match}
-                    bet={bet}
-                    locked={locked}
-                    isSaving={isSaving}
-                    isSaved={isSaved}
-                    onSave={saveBet}
-                  />
-                )
-              })}
+            <div style={{ flex: 1, height: '0.5px', background: 'linear-gradient(90deg, rgba(26,86,196,0.3), transparent)' }} />
+          </div>
+          <div>
+            {filtered.filter(m => m.group_name === group).map(match => (
+              <MatchRow
+                key={match.id}
+                match={match}
+                bet={bets[match.id]}
+                locked={isLocked(match.locked_at)}
+                isSaving={saving === match.id}
+                isSaved={saved === match.id}
+                onSave={saveBet}
+              />
+            ))}
           </div>
         </div>
       ))}
+
+      <div style={{ textAlign: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.5px', marginTop: '16px' }}>
+        Se guarda automáticamente al salir del campo
+      </div>
     </div>
   )
 }
 
-function MatchRow({
-  match,
-  bet,
-  locked,
-  isSaving,
-  isSaved,
-  onSave,
-}: {
-  match: Match
-  bet?: Bet
-  locked: boolean
-  isSaving: boolean
-  isSaved: boolean
-  onSave: (matchId: number, home: number, away: number) => void
+function MatchRow({ match, bet, locked, isSaving, isSaved, onSave }: {
+  match: Match; bet?: Bet; locked: boolean; isSaving: boolean; isSaved: boolean
+  onSave: (id: number, h: number, a: number) => void
 }) {
-  const [home, setHome] = useState(bet?.home_goals_bet ?? '')
-  const [away, setAway] = useState(bet?.away_goals_bet ?? '')
+  const [home, setHome] = useState<number | ''>(bet?.home_goals_bet ?? '')
+  const [away, setAway] = useState<number | ''>(bet?.away_goals_bet ?? '')
 
-  // Actualizar si llegan datos del padre
   useEffect(() => {
-    if (bet) {
-      setHome(bet.home_goals_bet)
-      setAway(bet.away_goals_bet)
-    }
+    if (bet) { setHome(bet.home_goals_bet); setAway(bet.away_goals_bet) }
   }, [bet])
 
   const date = new Date(match.played_at).toLocaleString('es-ES', {
-    timeZone: 'Europe/Madrid',
-    weekday: 'short',
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
+    timeZone: 'Europe/Madrid', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
   })
 
-  const canSave = home !== '' && away !== '' && !locked && !isSaving
+  const inputStyle = (filled: boolean): React.CSSProperties => ({
+    width: '36px', height: '34px',
+    background: filled ? 'rgba(26,86,196,0.1)' : 'rgba(255,255,255,0.04)',
+    border: `0.5px solid ${filled ? 'rgba(26,86,196,0.5)' : 'rgba(255,255,255,0.1)'}`,
+    borderRadius: '6px',
+    color: filled ? '#5b8ff9' : '#ffffff',
+    fontSize: '15px', fontWeight: 500,
+    textAlign: 'center', outline: 'none',
+    opacity: locked ? 0.4 : 1,
+    cursor: locked ? 'not-allowed' : 'text',
+  })
 
   return (
-    <div className={`bg-gray-900 border rounded-xl px-4 py-3 transition-colors ${
-      isSaved ? 'border-green-600' : bet ? 'border-gray-700' : 'border-gray-800'
-    }`}>
-      <div className="flex items-center gap-3">
-
-        {/* Equipo local */}
-        <div className="flex items-center gap-2 flex-1 justify-end">
-          <span className="text-sm font-medium text-right hidden sm:block">
-            {match.home_team.name}
-          </span>
-          <span className="text-xl flag-emoji">{match.home_team.flag_emoji}</span>
+    <>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: '10px',
+        padding: '9px 0',
+        borderBottom: '0.5px solid rgba(255,255,255,0.03)',
+      }}>
+        {/* Local */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: 1, justifyContent: 'flex-end' }}>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.78)' }} className="hidden sm:block">{match.home_team.name}</span>
+          <span className="flag-emoji" style={{ fontSize: '17px', lineHeight: 1 }}>{match.home_team.flag_emoji}</span>
         </div>
 
-        {/* Inputs del marcador */}
-        <div className="flex items-center gap-2 shrink-0">
-          <input
-            type="number"
-            min="0"
-            max="20"
-            disabled={locked}
-            value={home}
+        {/* Score */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+          <input type="number" min="0" max="20" disabled={locked} value={home}
             onChange={e => setHome(e.target.value === '' ? '' : Number(e.target.value))}
-            onBlur={() => {
-              if (home !== '' && away !== '' && !locked) {
-                onSave(match.id, Number(home), Number(away))
-              }
-            }}
-            className="w-12 h-10 text-center text-lg font-bold bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            onBlur={() => { if (home !== '' && away !== '' && !locked) onSave(match.id, Number(home), Number(away)) }}
+            style={inputStyle(home !== '')}
           />
-          <span className="text-gray-500 font-bold">-</span>
-          <input
-            type="number"
-            min="0"
-            max="20"
-            disabled={locked}
-            value={away}
+          <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: '13px' }}>–</span>
+          <input type="number" min="0" max="20" disabled={locked} value={away}
             onChange={e => setAway(e.target.value === '' ? '' : Number(e.target.value))}
-            onBlur={() => {
-              if (home !== '' && away !== '' && !locked) {
-                onSave(match.id, Number(home), Number(away))
-              }
-            }}
-            className="w-12 h-10 text-center text-lg font-bold bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:border-blue-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            onBlur={() => { if (home !== '' && away !== '' && !locked) onSave(match.id, Number(home), Number(away)) }}
+            style={inputStyle(away !== '')}
           />
         </div>
 
-        {/* Equipo visitante */}
-        <div className="flex items-center gap-2 flex-1">
-          <span className="text-xl flag-emoji">{match.away_team.flag_emoji}</span>
-          <span className="text-sm font-medium hidden sm:block">
-            {match.away_team.name}
-          </span>
+        {/* Visitante */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: 1 }}>
+          <span className="flag-emoji" style={{ fontSize: '17px', lineHeight: 1 }}>{match.away_team.flag_emoji}</span>
+          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.78)' }} className="hidden sm:block">{match.away_team.name}</span>
         </div>
 
         {/* Estado */}
-        <div className="w-8 text-center shrink-0">
-          {locked ? (
-            <span title="Cerrado">🔒</span>
-          ) : isSaving ? (
-            <span className="text-gray-500 text-xs">...</span>
-          ) : isSaved ? (
-            <span className="text-green-400">✓</span>
-          ) : bet ? (
-            <span className="text-blue-400 text-xs">✓</span>
-          ) : null}
+        <div style={{ width: '18px', textAlign: 'center', fontSize: '11px', flexShrink: 0 }}>
+          {locked ? '🔒' : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span> : isSaved ? <span style={{ color: '#C9A84C' }}>✓</span> : bet ? <span style={{ color: 'rgba(26,86,196,0.7)' }}>✓</span> : null}
         </div>
       </div>
-
-      {/* Fecha */}
-      <p className="text-xs text-gray-600 mt-1.5 text-center">{date}</p>
-    </div>
+      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.14)', textAlign: 'center', padding: '2px 0 6px', letterSpacing: '0.5px' }}>{date}</div>
+    </>
   )
 }
