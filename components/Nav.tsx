@@ -5,9 +5,9 @@ import { usePathname, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 const links = [
-  { href: '/apuestas',      label: 'Mis apuestas',   emoji: '🎯' },
-  { href: '/partidos',      label: 'Partidos',        emoji: '⚽' },
-  { href: '/clasificacion', label: 'Clasificación',   emoji: '🏅' },
+  { href: '/apuestas',          label: 'Mis apuestas',   emoji: '🎯' },
+  { href: '/apuestas/partidos', label: 'Partidos',        emoji: '⚽' },
+  { href: '/clasificacion',     label: 'Clasificación',   emoji: '🏅' },
 ]
 
 export default function Nav({ isAdmin }: { isAdmin: boolean }) {
