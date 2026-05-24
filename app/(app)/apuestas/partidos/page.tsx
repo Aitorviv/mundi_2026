@@ -65,8 +65,7 @@ export default function ApuestasPartidosPage() {
       { onConflict: 'participant_id,match_id' }
     )
     setBets(prev => ({ ...prev, [matchId]: { match_id: matchId, home_goals_bet: home, away_goals_bet: away } }))
-    setSaving(null)
-    setSaved(matchId)
+    setSaving(null); setSaved(matchId)
     setTimeout(() => setSaved(null), 1500)
   }
 
@@ -104,22 +103,13 @@ export default function ApuestasPartidosPage() {
       {/* Tabs jornada */}
       <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
         {[1, 2, 3].map(j => (
-          <button
-            key={j}
-            onClick={() => setActiveMatchday(j)}
-            style={{
-              fontSize: '10px',
-              color: activeMatchday === j ? '#C9A84C' : 'rgba(255,255,255,0.28)',
-              padding: '10px 16px',
-              letterSpacing: '1px',
-              textTransform: 'uppercase',
-              background: 'none',
-              border: 'none',
-              borderBottom: activeMatchday === j ? '2px solid #C9A84C' : '2px solid transparent',
-              cursor: 'pointer',
-              transition: 'all 0.15s',
-            }}
-          >
+          <button key={j} onClick={() => setActiveMatchday(j)} style={{
+            fontSize: '10px', color: activeMatchday === j ? '#C9A84C' : 'rgba(255,255,255,0.28)',
+            padding: '10px 16px', letterSpacing: '1px', textTransform: 'uppercase',
+            background: 'none', border: 'none',
+            borderBottom: activeMatchday === j ? '2px solid #C9A84C' : '2px solid transparent',
+            cursor: 'pointer', transition: 'all 0.15s',
+          }}>
             Jornada {j}
           </button>
         ))}
@@ -128,23 +118,21 @@ export default function ApuestasPartidosPage() {
       {/* Partidos por grupo */}
       {groups.map(group => (
         <div key={group} style={{ marginBottom: '16px' }}>
-          <div style={{ fontSize: '9px', fontWeight: 500, color: '#5b8ff9', letterSpacing: '3px', textTransform: 'uppercase', padding: '0 0 6px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ fontSize: '9px', fontWeight: 500, color: '#5b8ff9', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
             Grupo {group}
             <div style={{ flex: 1, height: '0.5px', background: 'linear-gradient(90deg, rgba(26,86,196,0.3), transparent)' }} />
           </div>
-          <div>
-            {filtered.filter(m => m.group_name === group).map(match => (
-              <MatchRow
-                key={match.id}
-                match={match}
-                bet={bets[match.id]}
-                locked={isLocked(match.locked_at)}
-                isSaving={saving === match.id}
-                isSaved={saved === match.id}
-                onSave={saveBet}
-              />
-            ))}
-          </div>
+          {filtered.filter(m => m.group_name === group).map(match => (
+            <MatchRow
+              key={match.id}
+              match={match}
+              bet={bets[match.id]}
+              locked={isLocked(match.locked_at)}
+              isSaving={saving === match.id}
+              isSaved={saved === match.id}
+              onSave={saveBet}
+            />
+          ))}
         </div>
       ))}
 
@@ -156,7 +144,8 @@ export default function ApuestasPartidosPage() {
 }
 
 function MatchRow({ match, bet, locked, isSaving, isSaved, onSave }: {
-  match: Match; bet?: Bet; locked: boolean; isSaving: boolean; isSaved: boolean
+  match: Match; bet?: Bet; locked: boolean
+  isSaving: boolean; isSaved: boolean
   onSave: (id: number, h: number, a: number) => void
 }) {
   const [home, setHome] = useState<number | ''>(bet?.home_goals_bet ?? '')
@@ -167,17 +156,16 @@ function MatchRow({ match, bet, locked, isSaving, isSaved, onSave }: {
   }, [bet])
 
   const date = new Date(match.played_at).toLocaleString('es-ES', {
-    timeZone: 'Europe/Madrid', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+    timeZone: 'Europe/Madrid', weekday: 'short', day: 'numeric',
+    month: 'short', hour: '2-digit', minute: '2-digit',
   })
 
   const inputStyle = (filled: boolean): React.CSSProperties => ({
     width: '36px', height: '34px',
     background: filled ? 'rgba(26,86,196,0.1)' : 'rgba(255,255,255,0.04)',
     border: `0.5px solid ${filled ? 'rgba(26,86,196,0.5)' : 'rgba(255,255,255,0.1)'}`,
-    borderRadius: '6px',
-    color: filled ? '#5b8ff9' : '#ffffff',
-    fontSize: '15px', fontWeight: 500,
-    textAlign: 'center', outline: 'none',
+    borderRadius: '6px', color: filled ? '#5b8ff9' : '#ffffff',
+    fontSize: '15px', fontWeight: 500, textAlign: 'center', outline: 'none',
     opacity: locked ? 0.4 : 1,
     cursor: locked ? 'not-allowed' : 'text',
   })
@@ -185,18 +173,22 @@ function MatchRow({ match, bet, locked, isSaving, isSaved, onSave }: {
   return (
     <>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '10px',
-        padding: '9px 0',
+        display: 'flex', alignItems: 'center', gap: '8px',
+        padding: '10px 0',
         borderBottom: '0.5px solid rgba(255,255,255,0.03)',
       }}>
         {/* Local */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: 1, justifyContent: 'flex-end' }}>
-          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.78)' }} className="hidden sm:block">{match.home_team.name}</span>
-          <span className="flag-emoji" style={{ fontSize: '17px', lineHeight: 1 }}>{match.home_team.flag_emoji}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'flex-end' }}>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.78)', textAlign: 'right', lineHeight: 1.3 }}>
+            {match.home_team.name}
+          </span>
+          <span className="flag-emoji" style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>
+            {match.home_team.flag_emoji}
+          </span>
         </div>
 
         {/* Score */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
           <input type="number" min="0" max="20" disabled={locked} value={home}
             onChange={e => setHome(e.target.value === '' ? '' : Number(e.target.value))}
             onBlur={() => { if (home !== '' && away !== '' && !locked) onSave(match.id, Number(home), Number(away)) }}
@@ -211,17 +203,26 @@ function MatchRow({ match, bet, locked, isSaving, isSaved, onSave }: {
         </div>
 
         {/* Visitante */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: 1 }}>
-          <span className="flag-emoji" style={{ fontSize: '17px', lineHeight: 1 }}>{match.away_team.flag_emoji}</span>
-          <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.78)' }} className="hidden sm:block">{match.away_team.name}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
+          <span className="flag-emoji" style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>
+            {match.away_team.flag_emoji}
+          </span>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.78)', lineHeight: 1.3 }}>
+            {match.away_team.name}
+          </span>
         </div>
 
         {/* Estado */}
         <div style={{ width: '18px', textAlign: 'center', fontSize: '11px', flexShrink: 0 }}>
-          {locked ? '🔒' : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span> : isSaved ? <span style={{ color: '#C9A84C' }}>✓</span> : bet ? <span style={{ color: 'rgba(26,86,196,0.7)' }}>✓</span> : null}
+          {locked ? '🔒' : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
+            : isSaved ? <span style={{ color: '#C9A84C' }}>✓</span>
+            : bet ? <span style={{ color: 'rgba(26,86,196,0.7)' }}>✓</span>
+            : null}
         </div>
       </div>
-      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.14)', textAlign: 'center', padding: '2px 0 6px', letterSpacing: '0.5px' }}>{date}</div>
+      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.14)', textAlign: 'center', padding: '2px 0 6px', letterSpacing: '0.5px' }}>
+        {date}
+      </div>
     </>
   )
 }
