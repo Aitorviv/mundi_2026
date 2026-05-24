@@ -22,7 +22,7 @@ export async function POST(request: Request) {
 
   const { username, name, pin } = await request.json()
 
-  if (!username || !name || !pin || pin.length !== 4) {
+  if (!username || !name || !pin || pin.length !== 6) {
     return NextResponse.json({ error: 'Datos incompletos' }, { status: 400 })
   }
 

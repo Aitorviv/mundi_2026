@@ -30,12 +30,12 @@ export default function AdminParticipantesPage() {
   }
 
   function generatePin() {
-    setNewPin(Math.floor(1000 + Math.random() * 9000).toString())
+    setNewPin(Math.floor(100000 + Math.random() * 900000).toString())
   }
 
   async function createUser(e: React.FormEvent) {
     e.preventDefault()
-    if (!newUsername || !newName || newPin.length !== 4) return
+    if (!newUsername || !newName || newPin.length !== 6) return
     setCreating(true)
     setMessage('')
 
@@ -99,10 +99,10 @@ export default function AdminParticipantesPage() {
 
           <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
             <div style={{ flex: 1 }}>
-              <label style={{ display: 'block', fontSize: '10px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>PIN (4 dígitos)</label>
+              <label style={{ display: 'block', fontSize: '10px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>PIN (6 dígitos)</label>
               <input type="text" value={newPin}
-                onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                placeholder="1234" maxLength={4} inputMode="numeric"
+                onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                placeholder="123456" maxLength={6} inputMode="numeric"
                 style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: '7px', padding: '9px 12px', color: '#C9A84C', fontSize: '18px', letterSpacing: '6px', outline: 'none', boxSizing: 'border-box' }}
               />
             </div>
@@ -119,11 +119,11 @@ export default function AdminParticipantesPage() {
             </p>
           )}
 
-          <button type="submit" disabled={creating || !newUsername || !newName || newPin.length !== 4} style={{
+          <button type="submit" disabled={creating || !newUsername || !newName || newPin.length !== 6} style={{
             background: 'linear-gradient(90deg, #C9A84C, #b8962a)', border: 'none', borderRadius: '8px',
             padding: '11px', color: '#05080F', fontSize: '12px', fontWeight: 600,
             letterSpacing: '0.5px', cursor: creating ? 'wait' : 'pointer',
-            opacity: !newUsername || !newName || newPin.length !== 4 ? 0.4 : 1,
+            opacity: !newUsername || !newName || newPin.length !== 6 ? 0.4 : 1,
           }}>
             {creating ? 'Creando...' : '+ Crear usuario'}
           </button>

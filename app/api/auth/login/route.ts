@@ -6,7 +6,7 @@ import { cookies } from 'next/headers'
 export async function POST(request: Request) {
   const { username, pin } = await request.json()
 
-  if (!username || !pin || pin.length !== 4) {
+  if (!username || !pin || pin.length !== 6) {
     return NextResponse.json({ error: 'Datos incorrectos' }, { status: 400 })
   }
 
@@ -27,7 +27,6 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Usuario o PIN incorrecto' }, { status: 401 })
   }
 
-  // Guardar sesión en cookie httpOnly
   const cookieStore = await cookies()
   cookieStore.set('porra_session', JSON.stringify({
     id: participant.id,
@@ -38,7 +37,7 @@ export async function POST(request: Request) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     sameSite: 'lax',
-    maxAge: 60 * 60 * 24 * 30, // 30 días
+    maxAge: 60 * 60 * 24 * 30,
     path: '/',
   })
 

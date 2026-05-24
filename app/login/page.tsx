@@ -83,15 +83,15 @@ export default function LoginPage() {
 
           <div>
             <label style={{ display: 'block', fontSize: '10px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1.5px', textTransform: 'uppercase', marginBottom: '8px' }}>
-              PIN (4 dígitos)
+              PIN (6 dígitos)
             </label>
             <input
               type="password"
               required
               value={pin}
-              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
-              placeholder="••••"
-              maxLength={4}
+              onChange={e => setPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              placeholder="••••••"
+              maxLength={6}
               inputMode="numeric"
               autoComplete="current-password"
               style={{
@@ -109,14 +109,14 @@ export default function LoginPage() {
 
           <button
             type="submit"
-            disabled={loading || pin.length !== 4}
+            disabled={loading || pin.length !== 6}
             style={{
               width: '100%',
-              background: loading || pin.length !== 4 ? 'rgba(200,16,46,0.3)' : 'linear-gradient(90deg, #C8102E, #9b0d22)',
+              background: loading || pin.length !== 6 ? 'rgba(200,16,46,0.3)' : 'linear-gradient(90deg, #C8102E, #9b0d22)',
               border: 'none', borderRadius: '8px', padding: '13px',
               color: '#ffffff', fontSize: '12px', fontWeight: 500,
               letterSpacing: '1.5px', textTransform: 'uppercase',
-              cursor: loading || pin.length !== 4 ? 'not-allowed' : 'pointer',
+              cursor: loading || pin.length !== 6 ? 'not-allowed' : 'pointer',
               marginTop: '4px',
             }}
           >
