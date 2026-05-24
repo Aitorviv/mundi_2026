@@ -64,6 +64,13 @@ export default function AdminResultadosPage() {
     setTimeout(() => setSaved(null), 1500)
   }
 
+  async function clearResult(matchId: number) {
+    if (!confirm("¿Borrar el resultado de este partido?")) return
+    const supabase = createClient()
+    await supabase.from("matches").update({ home_goals: null, away_goals: null }).eq("id", matchId)
+    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, home_goals: null, away_goals: null } : m))
+  }
+
   async function assignTeam(matchId: number, side: 'home' | 'away', teamId: number) {
     const supabase = createClient()
     const field = side === 'home' ? 'home_team_id' : 'away_team_id'
@@ -167,7 +174,7 @@ export default function AdminResultadosPage() {
             {phaseMatches.filter(m => m.group_name === group).map(match => (
               <AdminMatchRow key={match.id} match={match} teams={teams}
                 isSaving={saving === match.id} isSaved={saved === match.id}
-                onSaveResult={saveResult} onAssignTeam={assignTeam} />
+                onSaveResult={saveResult} onAssignTeam={assignTeam} onClearResult={clearResult} />
             ))}
           </div>
         ))
@@ -181,7 +188,7 @@ export default function AdminResultadosPage() {
             phaseMatches.map(match => (
               <AdminMatchRow key={match.id} match={match} teams={teams}
                 isSaving={saving === match.id} isSaved={saved === match.id}
-                onSaveResult={saveResult} onAssignTeam={assignTeam} />
+                onSaveResult={saveResult} onAssignTeam={assignTeam} onClearResult={clearResult} />
             ))
           )}
         </div>
@@ -190,11 +197,12 @@ export default function AdminResultadosPage() {
   )
 }
 
-function AdminMatchRow({ match, teams, isSaving, isSaved, onSaveResult, onAssignTeam }: {
+function AdminMatchRow({ match, teams, isSaving, isSaved, onSaveResult, onAssignTeam, onClearResult }: {
   match: Match; teams: Team[]
   isSaving: boolean; isSaved: boolean
   onSaveResult: (id: number, h: number, a: number) => void
   onAssignTeam: (id: number, side: 'home' | 'away', teamId: number) => void
+  onClearResult: (id: number) => void
 }) {
   const [homeGoals, setHomeGoals] = useState<number | ''>(match.home_goals ?? '')
   const [awayGoals, setAwayGoals] = useState<number | ''>(match.away_goals ?? '')
@@ -227,7 +235,8 @@ function AdminMatchRow({ match, teams, isSaving, isSaved, onSaveResult, onAssign
         </span>
         <div style={{ fontSize: '11px' }}>
           {isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
-            : isSaved ? <span style={{ color: '#C9A84C' }}>✓ Guardado</span>
+            : isSaved ? <span style={{ color: "#C9A84C" }}>✓ Guardado</span>
+            : hasResult ? <button onClick={() => onClearResult(match.id)} style={{ fontSize: "11px", color: "rgba(200,16,46,0.6)", background: "none", border: "0.5px solid rgba(200,16,46,0.3)", borderRadius: "6px", padding: "3px 8px", cursor: "pointer" }}>✕ Borrar</button>
             : hasResult ? <span style={{ color: 'rgba(26,86,196,0.7)', fontSize: '10px' }}>✓ Con resultado</span>
             : null}
         </div>
