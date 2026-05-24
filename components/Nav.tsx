@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/client'
 const links = [
   { href: '/apuestas',          label: 'Apuestas',      emoji: '🎯' },
   { href: '/apuestas/partidos', label: 'Partidos',       emoji: '⚽' },
+  { href: '/eliminatorias',     label: 'Eliminatorias', emoji: '🏆' },
   { href: '/clasificacion',     label: 'Clasificación',  emoji: '🏅' },
 ]
 
