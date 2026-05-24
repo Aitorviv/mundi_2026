@@ -1,13 +1,21 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import { getSession } from '@/lib/session'
 import bcrypt from 'bcryptjs'
+
+// Cliente con service role — bypasea RLS
+function getAdminClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
+}
 
 export async function GET() {
   const session = await getSession()
   if (!session?.is_admin) return NextResponse.json({ error: 'No autorizado' }, { status: 403 })
 
-  const supabase = await createClient()
+  const supabase = getAdminClient()
   const { data } = await supabase
     .from('participants')
     .select('id, username, name, display_name, is_admin, total_points')
@@ -27,7 +35,7 @@ export async function POST(request: Request) {
   }
 
   const hashedPin = await bcrypt.hash(pin, 10)
-  const supabase = await createClient()
+  const supabase = getAdminClient()
 
   const { error } = await supabase.from('participants').insert({
     username: username.toLowerCase().trim(),
@@ -55,7 +63,7 @@ export async function DELETE(request: Request) {
   const id = searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'ID requerido' }, { status: 400 })
 
-  const supabase = await createClient()
+  const supabase = getAdminClient()
   await supabase.from('participants').delete().eq('id', id).eq('is_admin', false)
 
   return NextResponse.json({ ok: true })
