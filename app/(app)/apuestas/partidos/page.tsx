@@ -2,8 +2,6 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { isBettingOpen } from '@/lib/deadline'
-import DeadlineCountdown from '@/components/DeadlineCountdown'
 
 type Match = {
   id: number
@@ -29,13 +27,13 @@ export default function ApuestasPartidosPage() {
   const [saved, setSaved] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeMatchday, setActiveMatchday] = useState(1)
-  const bettingOpen = isBettingOpen()
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser().catch(() => ({ data: { user: null } }))
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
 
     const { data: matchesData } = await supabase
       .from('matches')
@@ -43,36 +41,27 @@ export default function ApuestasPartidosPage() {
       .eq('phase', 'group')
       .order('match_number')
 
-    const sessionRes = await fetch('/api/auth/me')
-    const sessionData = await sessionRes.json()
-
-    if (sessionData?.id) {
-      const { data: betsData } = await supabase
-        .from('match_bets')
-        .select('match_id, home_goals_bet, away_goals_bet')
-        .eq('participant_id', sessionData.id)
-
-      if (betsData) {
-        const map: Record<number, Bet> = {}
-        betsData.forEach(b => { map[b.match_id] = b })
-        setBets(map)
-      }
-    }
+    const { data: betsData } = await supabase
+      .from('match_bets')
+      .select('match_id, home_goals_bet, away_goals_bet')
+      .eq('participant_id', user.id)
 
     if (matchesData) setMatches(matchesData as unknown as Match[])
+    if (betsData) {
+      const map: Record<number, Bet> = {}
+      betsData.forEach(b => { map[b.match_id] = b })
+      setBets(map)
+    }
     setLoading(false)
   }
 
   async function saveBet(matchId: number, home: number, away: number) {
-    if (!bettingOpen) return
     const supabase = createClient()
-    const sessionRes = await fetch('/api/auth/me')
-    const sessionData = await sessionRes.json()
-    if (!sessionData?.id) return
-
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
     setSaving(matchId)
     await supabase.from('match_bets').upsert(
-      { participant_id: sessionData.id, match_id: matchId, home_goals_bet: home, away_goals_bet: away },
+      { participant_id: user.id, match_id: matchId, home_goals_bet: home, away_goals_bet: away },
       { onConflict: 'participant_id,match_id' }
     )
     setBets(prev => ({ ...prev, [matchId]: { match_id: matchId, home_goals_bet: home, away_goals_bet: away } }))
@@ -80,20 +69,7 @@ export default function ApuestasPartidosPage() {
     setTimeout(() => setSaved(null), 1500)
   }
 
-  async function deleteBet(matchId: number) {
-    if (!bettingOpen) return
-    const supabase = createClient()
-    const sessionRes = await fetch('/api/auth/me')
-    const sessionData = await sessionRes.json()
-    if (!sessionData?.id) return
-
-    await supabase.from('match_bets')
-      .delete()
-      .eq('participant_id', sessionData.id)
-      .eq('match_id', matchId)
-
-    setBets(prev => { const n = { ...prev }; delete n[matchId]; return n })
-  }
+  function isLocked(lockedAt: string) { return new Date(lockedAt) < new Date() }
 
   const filtered = matches.filter(m => m.matchday === activeMatchday)
   const groups = [...new Set(filtered.map(m => m.group_name))].sort()
@@ -109,8 +85,7 @@ export default function ApuestasPartidosPage() {
 
   return (
     <div style={{ paddingTop: '24px', paddingBottom: '40px' }}>
-      <DeadlineCountdown />
-
+      {/* Cabecera */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <span style={{ fontSize: '9px', color: '#C8102E', letterSpacing: '3px', textTransform: 'uppercase', background: 'rgba(200,16,46,0.12)', border: '0.5px solid rgba(200,16,46,0.3)', padding: '3px 8px', borderRadius: '20px' }}>Fase de grupos</span>
@@ -125,6 +100,7 @@ export default function ApuestasPartidosPage() {
         </div>
       </div>
 
+      {/* Tabs jornada */}
       <div style={{ display: 'flex', marginBottom: '20px', borderBottom: '0.5px solid rgba(255,255,255,0.05)' }}>
         {[1, 2, 3].map(j => (
           <button key={j} onClick={() => setActiveMatchday(j)} style={{
@@ -139,6 +115,7 @@ export default function ApuestasPartidosPage() {
         ))}
       </div>
 
+      {/* Partidos por grupo */}
       {groups.map(group => (
         <div key={group} style={{ marginBottom: '16px' }}>
           <div style={{ fontSize: '9px', fontWeight: 500, color: '#5b8ff9', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -150,35 +127,32 @@ export default function ApuestasPartidosPage() {
               key={match.id}
               match={match}
               bet={bets[match.id]}
-              locked={!bettingOpen}
+              locked={isLocked(match.locked_at)}
               isSaving={saving === match.id}
               isSaved={saved === match.id}
               onSave={saveBet}
-              onDelete={deleteBet}
             />
           ))}
         </div>
       ))}
 
       <div style={{ textAlign: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.5px', marginTop: '16px' }}>
-        {bettingOpen ? 'Se guarda automáticamente al salir del campo' : 'Las apuestas están cerradas'}
+        Se guarda automáticamente al salir del campo
       </div>
     </div>
   )
 }
 
-function MatchRow({ match, bet, locked, isSaving, isSaved, onSave, onDelete }: {
+function MatchRow({ match, bet, locked, isSaving, isSaved, onSave }: {
   match: Match; bet?: Bet; locked: boolean
   isSaving: boolean; isSaved: boolean
   onSave: (id: number, h: number, a: number) => void
-  onDelete: (id: number) => void
 }) {
   const [home, setHome] = useState<number | ''>(bet?.home_goals_bet ?? '')
   const [away, setAway] = useState<number | ''>(bet?.away_goals_bet ?? '')
 
   useEffect(() => {
     if (bet) { setHome(bet.home_goals_bet); setAway(bet.away_goals_bet) }
-    else { setHome(''); setAway('') }
   }, [bet])
 
   const date = new Date(match.played_at).toLocaleString('es-ES', {
@@ -200,13 +174,20 @@ function MatchRow({ match, bet, locked, isSaving, isSaved, onSave, onDelete }: {
     <>
       <div style={{
         display: 'flex', alignItems: 'center', gap: '8px',
-        padding: '10px 0', borderBottom: '0.5px solid rgba(255,255,255,0.03)',
+        padding: '10px 0',
+        borderBottom: '0.5px solid rgba(255,255,255,0.03)',
       }}>
+        {/* Local */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, justifyContent: 'flex-end' }}>
-          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.78)', textAlign: 'right', lineHeight: 1.3 }}>{match.home_team.name}</span>
-          <span className="flag-emoji" style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>{match.home_team.flag_emoji}</span>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.78)', textAlign: 'right', lineHeight: 1.3 }}>
+            {match.home_team.name}
+          </span>
+          <span className="flag-emoji" style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>
+            {match.home_team.flag_emoji}
+          </span>
         </div>
 
+        {/* Score */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
           <input type="number" min="0" max="20" disabled={locked} value={home}
             onChange={e => setHome(e.target.value === '' ? '' : Number(e.target.value))}
@@ -221,24 +202,27 @@ function MatchRow({ match, bet, locked, isSaving, isSaved, onSave, onDelete }: {
           />
         </div>
 
+        {/* Visitante */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
-          <span className="flag-emoji" style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>{match.away_team.flag_emoji}</span>
-          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.78)', lineHeight: 1.3 }}>{match.away_team.name}</span>
+          <span className="flag-emoji" style={{ fontSize: '16px', lineHeight: 1, flexShrink: 0 }}>
+            {match.away_team.flag_emoji}
+          </span>
+          <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.78)', lineHeight: 1.3 }}>
+            {match.away_team.name}
+          </span>
         </div>
 
-        <div style={{ width: '28px', textAlign: 'center', fontSize: '11px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          {locked ? <span>🔒</span>
-            : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
+        {/* Estado */}
+        <div style={{ width: '18px', textAlign: 'center', fontSize: '11px', flexShrink: 0 }}>
+          {locked ? '🔒' : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
             : isSaved ? <span style={{ color: '#C9A84C' }}>✓</span>
-            : bet ? (
-              <button onClick={() => onDelete(match.id)} title="Borrar apuesta" style={{
-                background: 'none', border: 'none', cursor: 'pointer',
-                color: 'rgba(200,16,46,0.5)', fontSize: '13px', padding: '2px',
-              }}>✕</button>
-            ) : null}
+            : bet ? <span style={{ color: 'rgba(26,86,196,0.7)' }}>✓</span>
+            : null}
         </div>
       </div>
-      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.14)', textAlign: 'center', padding: '2px 0 6px', letterSpacing: '0.5px' }}>{date}</div>
+      <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.45)', textAlign: 'center', padding: '2px 0 6px', letterSpacing: '0.5px' }}>
+        {date}
+      </div>
     </>
   )
 }
