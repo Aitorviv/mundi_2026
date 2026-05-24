@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
 import { cookies } from 'next/headers'
 
@@ -10,15 +10,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Datos incorrectos' }, { status: 400 })
   }
 
-  const supabase = await createClient()
+  // Usar service role para bypassar RLS en el login
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 
-  const { data: participant } = await supabase
+  const { data: participant, error } = await supabase
     .from('participants')
     .select('id, username, pin, display_name, name, is_admin')
     .eq('username', username.toLowerCase().trim())
     .single()
 
-  if (!participant || !participant.pin) {
+  if (error || !participant || !participant.pin) {
     return NextResponse.json({ error: 'Usuario o PIN incorrecto' }, { status: 401 })
   }
 
