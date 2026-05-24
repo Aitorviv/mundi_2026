@@ -4,7 +4,7 @@ export async function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname
 
   // Rutas públicas
-  const publicRoutes = ['/login', '/api/auth']
+  const publicRoutes = ['/login', '/api/auth', '/admin/restringido']
   if (publicRoutes.some(r => pathname.startsWith(r))) {
     return NextResponse.next()
   }
@@ -26,10 +26,10 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
-  // Solo admins en /admin
+  // No admins en /admin → página de acceso restringido
   if (pathname.startsWith('/admin') && !parsed.is_admin) {
     const url = request.nextUrl.clone()
-    url.pathname = '/apuestas'
+    url.pathname = '/admin/restringido'
     return NextResponse.redirect(url)
   }
 
