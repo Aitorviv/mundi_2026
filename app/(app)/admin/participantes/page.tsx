@@ -1,74 +1,166 @@
-import { createClient } from '@/lib/supabase/server'
-import { redirect } from 'next/navigation'
-import ApproveButton from './ApproveButton'
+'use client'
 
-export default async function AdminParticipantesPage() {
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/login')
+import { useEffect, useState } from 'react'
 
-  const { data: me } = await supabase
-    .from('participants')
-    .select('is_admin')
-    .eq('id', user.id)
-    .single()
+type Participant = {
+  id: string
+  username: string
+  display_name: string | null
+  name: string
+  is_admin: boolean
+  total_points: number
+}
 
-  if (!me?.is_admin) redirect('/apuestas')
+export default function AdminParticipantesPage() {
+  const [participants, setParticipants] = useState<Participant[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newUsername, setNewUsername] = useState('')
+  const [newName, setNewName] = useState('')
+  const [newPin, setNewPin] = useState('')
+  const [creating, setCreating] = useState(false)
+  const [message, setMessage] = useState('')
 
-  const { data: participants } = await supabase
-    .from('participants')
-    .select('id, name, display_name, approved, is_admin, total_points, created_at')
-    .order('created_at', { ascending: false })
+  useEffect(() => { loadParticipants() }, [])
 
-  const pending = participants?.filter(p => !p.approved) ?? []
-  const approved = participants?.filter(p => p.approved) ?? []
+  async function loadParticipants() {
+    const res = await fetch('/api/admin/participants')
+    const data = await res.json()
+    if (data.participants) setParticipants(data.participants)
+    setLoading(false)
+  }
+
+  function generatePin() {
+    setNewPin(Math.floor(1000 + Math.random() * 9000).toString())
+  }
+
+  async function createUser(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newUsername || !newName || newPin.length !== 4) return
+    setCreating(true)
+    setMessage('')
+
+    const res = await fetch('/api/admin/participants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: newUsername.trim().toLowerCase(),
+        name: newName.trim(),
+        pin: newPin,
+      }),
+    })
+
+    const data = await res.json()
+    if (res.ok) {
+      setMessage(`✓ Usuario "${newUsername}" creado · PIN: ${newPin} (anótalo, no se puede recuperar)`)
+      setNewUsername(''); setNewName(''); setNewPin('')
+      loadParticipants()
+    } else {
+      setMessage(`✗ Error: ${data.error}`)
+    }
+    setCreating(false)
+  }
+
+  async function deleteUser(id: string, username: string) {
+    if (!confirm(`¿Eliminar usuario "${username}"?`)) return
+    await fetch(`/api/admin/participants?id=${id}`, { method: 'DELETE' })
+    loadParticipants()
+  }
 
   return (
-    <div className="space-y-8">
-      <h1 className="text-2xl font-bold">⚙️ Participantes</h1>
+    <div style={{ paddingTop: '24px', paddingBottom: '40px' }}>
+      <div style={{ marginBottom: '28px' }}>
+        <div style={{ fontSize: '9px', color: '#C8102E', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '6px' }}>Panel administrador</div>
+        <h1 style={{ fontSize: '20px', fontWeight: 500, color: '#ffffff' }}>Participantes</h1>
+      </div>
 
-      {/* Pendientes */}
-      {pending.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-yellow-400 uppercase tracking-wider mb-3">
-            Pendientes de aprobación ({pending.length})
-          </h2>
-          <div className="space-y-2">
-            {pending.map(p => (
-              <div key={p.id} className="bg-gray-900 border border-yellow-800 rounded-xl px-4 py-3 flex items-center justify-between">
-                <div>
-                  <p className="text-white font-medium">{p.display_name || p.name}</p>
-                  <p className="text-gray-500 text-xs mt-0.5">
-                    {new Date(p.created_at).toLocaleDateString('es-ES')}
-                  </p>
-                </div>
-                <ApproveButton participantId={p.id} />
-              </div>
-            ))}
+      {/* Crear usuario */}
+      <div style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(201,168,76,0.2)', borderRadius: '12px', padding: '20px', marginBottom: '28px' }}>
+        <div style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '16px' }}>Crear nuevo usuario</div>
+
+        <form onSubmit={createUser} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: '140px' }}>
+              <label style={{ display: 'block', fontSize: '10px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>Usuario</label>
+              <input type="text" value={newUsername}
+                onChange={e => setNewUsername(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                placeholder="mikel"
+                style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: '7px', padding: '9px 12px', color: '#ffffff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <div style={{ flex: 1, minWidth: '140px' }}>
+              <label style={{ display: 'block', fontSize: '10px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>Nombre visible</label>
+              <input type="text" value={newName}
+                onChange={e => setNewName(e.target.value)}
+                placeholder="Mikel Goikoetxea"
+                style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: '7px', padding: '9px 12px', color: '#ffffff', fontSize: '13px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Aprobados */}
-      <div>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">
-          Aprobados ({approved.length})
-        </h2>
-        <div className="space-y-2">
-          {approved.map(p => (
-            <div key={p.id} className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 flex items-center justify-between">
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ display: 'block', fontSize: '10px', color: 'rgba(255,255,255,0.4)', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '6px' }}>PIN (4 dígitos)</label>
+              <input type="text" value={newPin}
+                onChange={e => setNewPin(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                placeholder="1234" maxLength={4} inputMode="numeric"
+                style={{ width: '100%', background: 'rgba(255,255,255,0.05)', border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: '7px', padding: '9px 12px', color: '#C9A84C', fontSize: '18px', letterSpacing: '6px', outline: 'none', boxSizing: 'border-box' }}
+              />
+            </div>
+            <button type="button" onClick={generatePin} style={{
+              padding: '9px 14px', background: 'rgba(255,255,255,0.05)',
+              border: '0.5px solid rgba(255,255,255,0.1)', borderRadius: '7px',
+              color: 'rgba(255,255,255,0.5)', fontSize: '11px', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>🎲 Generar</button>
+          </div>
+
+          {message && (
+            <p style={{ fontSize: '12px', color: message.startsWith('✓') ? '#C9A84C' : '#ff4d6a', padding: '8px 12px', background: message.startsWith('✓') ? 'rgba(201,168,76,0.1)' : 'rgba(200,16,46,0.1)', borderRadius: '6px' }}>
+              {message}
+            </p>
+          )}
+
+          <button type="submit" disabled={creating || !newUsername || !newName || newPin.length !== 4} style={{
+            background: 'linear-gradient(90deg, #C9A84C, #b8962a)', border: 'none', borderRadius: '8px',
+            padding: '11px', color: '#05080F', fontSize: '12px', fontWeight: 600,
+            letterSpacing: '0.5px', cursor: creating ? 'wait' : 'pointer',
+            opacity: !newUsername || !newName || newPin.length !== 4 ? 0.4 : 1,
+          }}>
+            {creating ? 'Creando...' : '+ Crear usuario'}
+          </button>
+        </form>
+      </div>
+
+      {/* Lista */}
+      <div style={{ fontSize: '9px', color: '#5b8ff9', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        Participantes ({participants.length})
+        <div style={{ flex: 1, height: '0.5px', background: 'linear-gradient(90deg, rgba(26,86,196,0.3), transparent)' }} />
+      </div>
+
+      {loading ? <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px' }}>Cargando...</p> : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+          {participants.map(p => (
+            <div key={p.id} style={{
+              background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)',
+              borderRadius: '10px', padding: '12px 16px',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
+            }}>
               <div>
-                <p className="text-white font-medium flex items-center gap-2">
-                  {p.display_name || p.name}
-                  {p.is_admin && <span className="text-xs bg-orange-600 px-1.5 py-0.5 rounded">admin</span>}
-                </p>
-                <p className="text-gray-500 text-xs mt-0.5">{p.total_points} puntos</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span style={{ fontSize: '13px', color: '#ffffff', fontWeight: 500 }}>{p.display_name || p.name}</span>
+                  {p.is_admin && <span style={{ fontSize: '9px', color: '#C8102E', background: 'rgba(200,16,46,0.1)', border: '0.5px solid rgba(200,16,46,0.3)', padding: '1px 5px', borderRadius: '4px' }}>ADMIN</span>}
+                </div>
+                <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>@{p.username} · {p.total_points} pts</div>
               </div>
-              <span className="text-green-400 text-sm">✓ Aprobado</span>
+              {!p.is_admin && (
+                <button onClick={() => deleteUser(p.id, p.username)} style={{
+                  fontSize: '11px', color: 'rgba(200,16,46,0.5)', background: 'none',
+                  border: '0.5px solid rgba(200,16,46,0.2)', borderRadius: '6px', padding: '5px 10px', cursor: 'pointer',
+                }}>Eliminar</button>
+              )}
             </div>
           ))}
         </div>
-      </div>
+      )}
     </div>
   )
 }
