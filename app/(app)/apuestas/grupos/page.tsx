@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { isBettingOpen } from '@/lib/deadline'
+import DeadlineCountdown from '@/components/DeadlineCountdown'
 
 type Team = { id: number; name: string; flag_emoji: string; group_name: string }
 
@@ -14,53 +16,70 @@ export default function ApuestasGruposPage() {
   const [saved, setSaved] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [activeGroup, setActiveGroup] = useState('A')
+  const bettingOpen = isBettingOpen()
 
   useEffect(() => { loadData() }, [])
 
   async function loadData() {
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const sessionRes = await fetch('/api/auth/me')
+    const session = await sessionRes.json()
 
     const { data: teamsData } = await supabase
       .from('teams').select('id, name, flag_emoji, group_name').order('group_name')
 
-    const { data: betsData } = await supabase
-      .from('group_position_bets').select('group_name, position, team_id').eq('participant_id', user.id)
+    if (session?.id) {
+      const { data: betsData } = await supabase
+        .from('group_position_bets').select('group_name, position, team_id').eq('participant_id', session.id)
+      if (betsData) {
+        const map: Record<string, number> = {}
+        betsData.forEach(b => { map[`${b.group_name}-${b.position}`] = b.team_id })
+        setBets(map)
+      }
+    }
 
     if (teamsData) setTeams(teamsData)
-    if (betsData) {
-      const map: Record<string, number> = {}
-      betsData.forEach(b => { map[`${b.group_name}-${b.position}`] = b.team_id })
-      setBets(map)
-    }
     setLoading(false)
   }
 
   async function saveBet(group: string, position: number, teamId: number) {
+    if (!bettingOpen) return
     const supabase = createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return
+    const sessionRes = await fetch('/api/auth/me')
+    const session = await sessionRes.json()
+    if (!session?.id) return
+
     const key = `${group}-${position}`
     setSaving(key)
 
-    // Si el equipo ya está en otra posición del grupo, lo quitamos
     const conflict = Object.entries(bets).find(([k, v]) => k.startsWith(`${group}-`) && k !== key && v === teamId)
     if (conflict) {
       const oldPos = parseInt(conflict[0].split('-')[1])
       await supabase.from('group_position_bets').delete()
-        .eq('participant_id', user.id).eq('group_name', group).eq('position', oldPos)
+        .eq('participant_id', session.id).eq('group_name', group).eq('position', oldPos)
       setBets(prev => { const n = { ...prev }; delete n[conflict[0]]; return n })
     }
 
     await supabase.from('group_position_bets').upsert(
-      { participant_id: user.id, group_name: group, position, team_id: teamId },
+      { participant_id: session.id, group_name: group, position, team_id: teamId },
       { onConflict: 'participant_id,group_name,position' }
     )
     setBets(prev => ({ ...prev, [key]: teamId }))
-    setSaving(null)
-    setSaved(key)
+    setSaving(null); setSaved(key)
     setTimeout(() => setSaved(null), 1200)
+  }
+
+  async function deleteBet(group: string, position: number) {
+    if (!bettingOpen) return
+    const supabase = createClient()
+    const sessionRes = await fetch('/api/auth/me')
+    const session = await sessionRes.json()
+    if (!session?.id) return
+
+    const key = `${group}-${position}`
+    await supabase.from('group_position_bets').delete()
+      .eq('participant_id', session.id).eq('group_name', group).eq('position', position)
+    setBets(prev => { const n = { ...prev }; delete n[key]; return n })
   }
 
   const groupTeams = teams.filter(t => t.group_name === activeGroup)
@@ -69,12 +88,6 @@ export default function ApuestasGruposPage() {
   const pct = Math.round((totalBets / totalNeeded) * 100)
   const completedGroups = GROUPS.filter(g => [1,2,3,4].every(pos => bets[`${g}-${pos}`]))
 
-  if (loading) return (
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase' }}>Cargando grupos...</p>
-    </div>
-  )
-
   const posLabels: Record<number, { label: string; color: string }> = {
     1: { label: '1º', color: '#C9A84C' },
     2: { label: '2º', color: '#5b8ff9' },
@@ -82,23 +95,23 @@ export default function ApuestasGruposPage() {
     4: { label: '4º', color: 'rgba(255,255,255,0.2)' },
   }
 
+  if (loading) return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
+      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase' }}>Cargando grupos...</p>
+    </div>
+  )
+
   return (
     <div style={{ paddingTop: '24px', paddingBottom: '40px' }}>
+      <DeadlineCountdown />
 
-      {/* Cabecera */}
       <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-          <span style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '3px', textTransform: 'uppercase', background: 'rgba(201,168,76,0.12)', border: '0.5px solid rgba(201,168,76,0.3)', padding: '3px 8px', borderRadius: '20px' }}>
-            Fase de grupos
-          </span>
-          <span style={{ fontSize: '9px', color: '#5b8ff9', letterSpacing: '2px', textTransform: 'uppercase', background: 'rgba(26,86,196,0.12)', border: '0.5px solid rgba(26,86,196,0.3)', padding: '3px 8px', borderRadius: '20px' }}>
-            2 pts posición exacta · 1 pt top 2
-          </span>
+          <span style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '3px', textTransform: 'uppercase', background: 'rgba(201,168,76,0.12)', border: '0.5px solid rgba(201,168,76,0.3)', padding: '3px 8px', borderRadius: '20px' }}>Fase de grupos</span>
+          <span style={{ fontSize: '9px', color: '#5b8ff9', letterSpacing: '2px', textTransform: 'uppercase', background: 'rgba(26,86,196,0.12)', border: '0.5px solid rgba(26,86,196,0.3)', padding: '3px 8px', borderRadius: '20px' }}>2 pts posición exacta · 1 pt top 2</span>
         </div>
         <h1 style={{ fontSize: '20px', fontWeight: 500, color: '#ffffff', marginBottom: '3px' }}>Posiciones de grupo</h1>
-        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>
-          {completedGroups.length} / {GROUPS.length} grupos completados
-        </p>
+        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>{completedGroups.length} / {GROUPS.length} grupos completados</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
             <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #1A56C4 0%, #C9A84C 60%, #C8102E 100%)', borderRadius: '2px', transition: 'width 0.5s' }} />
@@ -135,7 +148,9 @@ export default function ApuestasGruposPage() {
         <div style={{ padding: '14px 20px', borderBottom: '0.5px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div>
             <span style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '3px', textTransform: 'uppercase' }}>Grupo {activeGroup}</span>
-            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>Elige el orden de clasificación</p>
+            <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginTop: '2px' }}>
+              {bettingOpen ? 'Elige el orden de clasificación' : 'Apuestas cerradas'}
+            </p>
           </div>
           {[1,2,3,4].every(pos => bets[`${activeGroup}-${pos}`]) && (
             <span style={{ fontSize: '11px', color: '#C9A84C' }}>✓ Completo</span>
@@ -160,14 +175,14 @@ export default function ApuestasGruposPage() {
                     const isSelected = selectedTeamId === team.id
                     const usedInOther = Object.entries(bets).some(([k, v]) => k.startsWith(`${activeGroup}-`) && k !== key && v === team.id)
                     return (
-                      <button key={team.id} onClick={() => saveBet(activeGroup, position, team.id)} disabled={isSav} style={{
+                      <button key={team.id} onClick={() => bettingOpen && saveBet(activeGroup, position, team.id)} disabled={isSav || !bettingOpen} style={{
                         display: 'flex', alignItems: 'center', gap: '6px',
                         padding: '6px 10px', borderRadius: '7px',
                         background: isSelected ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.04)',
                         border: isSelected ? '0.5px solid rgba(201,168,76,0.5)' : '0.5px solid rgba(255,255,255,0.06)',
                         color: isSelected ? '#C9A84C' : usedInOther ? 'rgba(255,255,255,0.25)' : 'rgba(255,255,255,0.65)',
-                        fontSize: '12px', cursor: isSav ? 'wait' : 'pointer',
-                        transition: 'all 0.15s', opacity: usedInOther ? 0.45 : 1,
+                        fontSize: '12px', cursor: !bettingOpen ? 'not-allowed' : isSav ? 'wait' : 'pointer',
+                        transition: 'all 0.15s', opacity: usedInOther ? 0.45 : !bettingOpen ? 0.5 : 1,
                       }}>
                         <span className="flag-emoji" style={{ fontSize: '14px', lineHeight: 1 }}>{team.flag_emoji}</span>
                         <span>{team.name}</span>
@@ -175,11 +190,16 @@ export default function ApuestasGruposPage() {
                     )
                   })}
                 </div>
-                <div style={{ width: '18px', textAlign: 'center', fontSize: '11px', flexShrink: 0 }}>
-                  {isSav ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
+                <div style={{ width: '28px', textAlign: 'center', fontSize: '11px', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {!bettingOpen ? <span>🔒</span>
+                    : isSav ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
                     : isSaved ? <span style={{ color: '#C9A84C' }}>✓</span>
-                    : selectedTeam ? <span style={{ color: 'rgba(201,168,76,0.5)' }}>✓</span>
-                    : null}
+                    : selectedTeam ? (
+                      <button onClick={() => deleteBet(activeGroup, position)} title="Borrar" style={{
+                        background: 'none', border: 'none', cursor: 'pointer',
+                        color: 'rgba(200,16,46,0.5)', fontSize: '13px', padding: '2px',
+                      }}>✕</button>
+                    ) : null}
                 </div>
               </div>
               {selectedTeam && (
@@ -194,7 +214,7 @@ export default function ApuestasGruposPage() {
       </div>
 
       <div style={{ textAlign: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.5px', marginTop: '16px' }}>
-        Se guarda automáticamente al seleccionar · los equipos en gris ya tienen posición asignada
+        {bettingOpen ? 'Se guarda automáticamente · ✕ para borrar una posición' : 'Las apuestas están cerradas'}
       </div>
     </div>
   )
