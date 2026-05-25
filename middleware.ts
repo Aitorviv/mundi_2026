@@ -30,7 +30,7 @@ export async function middleware(request: NextRequest) {
         <div>
           <div class="trophy">🏆</div>
           <h1>Acceso restringido</h1>
-          <p>Esta aplicación solo está disponible desde España.</p>
+          <p>Esta aplicación no está disponible.</p>
           <p style="color:rgba(255,255,255,0.2);font-size:12px;margin-top:8px;">País detectado: ${country}</p>
         </div>
       </body>
