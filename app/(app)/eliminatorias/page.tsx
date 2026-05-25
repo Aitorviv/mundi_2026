@@ -5,39 +5,71 @@ import { createClient } from '@/lib/supabase/client'
 import { isBettingOpen } from '@/lib/deadline'
 import DeadlineCountdown from '@/components/DeadlineCountdown'
 
-type Team = { id: number; name: string; flag_emoji: string }
-type Match = {
-  id: number
-  match_number: number
-  phase: string
-  home_team_id: number | null
-  away_team_id: number | null
-  home_goals: number | null
-  away_goals: number | null
-  played_at: string
-  home_team?: Team
-  away_team?: Team
-}
-type Bet = { match_id: number; home_goals_bet: number; away_goals_bet: number }
+type Team = { id: number; name: string; flag_emoji: string; group_name?: string }
 
-const PHASES = [
-  { key: 'r32',   label: '1/16'    },
-  { key: 'r16',   label: 'Octavos' },
-  { key: 'qf',    label: 'Cuartos' },
-  { key: 'sf',    label: 'Semis'   },
-  { key: '3rd',   label: '3º-4º'   },
-  { key: 'final', label: 'Final'   },
+// Mapa de dieciseisavos según FIFA 2026
+// Cada partido tiene: qué clasificado juega de local y de visitante
+const R32_MAP = [
+  { match: 73,  home: '2A', away: '2B'       },
+  { match: 74,  home: '1C', away: '2F'       },
+  { match: 75,  home: '1E', away: '3ABCDF'   },
+  { match: 76,  home: '1F', away: '2C'       },
+  { match: 77,  home: '2E', away: '2I'       },
+  { match: 78,  home: '1I', away: '3CDFGH'   },
+  { match: 79,  home: '1A', away: '3CEFHI'   },
+  { match: 80,  home: '1L', away: '3EHIJK'   },
+  { match: 81,  home: '1G', away: '3AEHIJ'   },
+  { match: 82,  home: '1D', away: '3BEFIJ'   },
+  { match: 83,  home: '1H', away: '2J'       },
+  { match: 84,  home: '2K', away: '2L'       },
+  { match: 85,  home: '1B', away: '3EFGIJ'   },
+  { match: 86,  home: '2D', away: '2G'       },
+  { match: 87,  home: '1J', away: '2H'       },
+  { match: 88,  home: '1K', away: '3DEIJL'   },
 ]
 
-const PHASE_LABEL: Record<string, string> = {
-  r32: '1/16', r16: '1/8', qf: '1/4', sf: 'SF', '3rd': '3º-4º', final: '🏆'
+// Mapa de octavos (ganador de qué dieciseisavo juega contra quién)
+const R16_MAP = [
+  { match: 89,  home: 73, away: 75  },
+  { match: 90,  home: 74, away: 77  },
+  { match: 91,  home: 76, away: 78  },
+  { match: 92,  home: 79, away: 80  },
+  { match: 93,  home: 83, away: 84  },
+  { match: 94,  home: 81, away: 82  },
+  { match: 95,  home: 86, away: 88  },
+  { match: 96,  home: 85, away: 87  },
+]
+
+const QF_MAP = [
+  { match: 97,  home: 89, away: 90  },
+  { match: 98,  home: 93, away: 94  },
+  { match: 99,  home: 91, away: 92  },
+  { match: 100, home: 95, away: 96  },
+]
+
+const SF_MAP = [
+  { match: 101, home: 97,  away: 98  },
+  { match: 102, home: 99,  away: 100 },
+]
+
+const FINAL_MAP = [
+  { match: 104, home: 101, away: 102 },
+]
+
+const PHASE_LABELS: Record<string, string> = {
+  r32: '1/16 de final', r16: 'Octavos de final', qf: 'Cuartos de final',
+  sf: 'Semifinales', final: 'Final'
+}
+
+const PHASE_PTS: Record<string, number> = {
+  r32: 2, r16: 3, qf: 4, sf: 6, final: 9
 }
 
 export default function EliminatoriasPage() {
-  const [matches, setMatches] = useState<Match[]>([])
-  const [bets, setBets] = useState<Record<number, Bet>>({})
+  const [teams, setTeams] = useState<Record<number, Team>>({})
+  const [groupBets, setGroupBets] = useState<Record<string, number>>({}) // '1A' -> team_id
+  const [picks, setPicks] = useState<Record<number, number>>({}) // match_number -> team_id
   const [saving, setSaving] = useState<number | null>(null)
-  const [saved, setSaved] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [activePhase, setActivePhase] = useState('r32')
   const bettingOpen = isBettingOpen()
@@ -49,66 +81,114 @@ export default function EliminatoriasPage() {
     const sessionRes = await fetch('/api/auth/me')
     const session = await sessionRes.json()
 
-    const { data: matchesData } = await supabase
-      .from('matches')
-      .select(`id, match_number, phase, home_team_id, away_team_id, home_goals, away_goals, played_at,
-        home_team:home_team_id(id, name, flag_emoji),
-        away_team:away_team_id(id, name, flag_emoji)`)
-      .in('phase', ['r32','r16','qf','sf','3rd','final'])
-      .order('match_number')
-
-    if (session?.id) {
-      const { data: betsData } = await supabase
-        .from('match_bets')
-        .select('match_id, home_goals_bet, away_goals_bet')
-        .eq('participant_id', session.id)
-
-      if (betsData) {
-        const map: Record<number, Bet> = {}
-        betsData.forEach(b => { map[b.match_id] = b })
-        setBets(map)
-      }
+    // Cargar todos los equipos
+    const { data: teamsData } = await supabase
+      .from('teams')
+      .select('id, name, flag_emoji, group_name')
+    if (teamsData) {
+      const map: Record<number, Team> = {}
+      teamsData.forEach(t => { map[t.id] = t })
+      setTeams(map)
     }
 
-    if (matchesData) setMatches(matchesData as unknown as Match[])
+    if (!session?.id) { setLoading(false); return }
+
+    // Cargar apuestas de posiciones de grupo del usuario
+    const { data: groupBetsData } = await supabase
+      .from('group_position_bets')
+      .select('group_name, position, team_id')
+      .eq('participant_id', session.id)
+
+    if (groupBetsData) {
+      const map: Record<string, number> = {}
+      groupBetsData.forEach(b => {
+        map[`${b.position}${b.group_name}`] = b.team_id // e.g. '1A', '2B', '3C'
+      })
+      setGroupBets(map)
+    }
+
+    // Cargar picks de eliminatorias existentes
+    const { data: picksData } = await supabase
+      .from('knockout_picks')
+      .select('match_number, team_id')
+      .eq('participant_id', session.id)
+
+    if (picksData) {
+      const map: Record<number, number> = {}
+      picksData.forEach(p => { map[p.match_number] = p.team_id })
+      setPicks(map)
+    }
+
     setLoading(false)
   }
 
-  async function saveBet(matchId: number, home: number, away: number) {
+  async function savePick(matchNumber: number, teamId: number) {
     if (!bettingOpen) return
     const supabase = createClient()
     const sessionRes = await fetch('/api/auth/me')
     const session = await sessionRes.json()
     if (!session?.id) return
-    setSaving(matchId)
-    await supabase.from('match_bets').upsert(
-      { participant_id: session.id, match_id: matchId, home_goals_bet: home, away_goals_bet: away },
-      { onConflict: 'participant_id,match_id' }
+
+    // Toggle
+    if (picks[matchNumber] === teamId) {
+      await supabase.from('knockout_picks').delete()
+        .eq('participant_id', session.id).eq('match_number', matchNumber)
+      setPicks(prev => { const n = { ...prev }; delete n[matchNumber]; return n })
+      return
+    }
+
+    setSaving(matchNumber)
+    await supabase.from('knockout_picks').upsert(
+      { participant_id: session.id, match_number: matchNumber, team_id: teamId },
+      { onConflict: 'participant_id,match_number' }
     )
-    setBets(prev => ({ ...prev, [matchId]: { match_id: matchId, home_goals_bet: home, away_goals_bet: away } }))
-    setSaving(null); setSaved(matchId)
-    setTimeout(() => setSaved(null), 1500)
+    setPicks(prev => ({ ...prev, [matchNumber]: teamId }))
+    setSaving(null)
   }
 
-  async function deleteBet(matchId: number) {
-    if (!bettingOpen) return
-    const supabase = createClient()
-    const sessionRes = await fetch('/api/auth/me')
-    const session = await sessionRes.json()
-    if (!session?.id) return
-    await supabase.from('match_bets').delete().eq('participant_id', session.id).eq('match_id', matchId)
-    setBets(prev => { const n = { ...prev }; delete n[matchId]; return n })
+  // Resolver qué equipo ocupa una posición de grupo (ej: '1A', '2B', '3ABCDF')
+  function resolveGroupSlot(slot: string): number | null {
+    if (slot.length === 2) {
+      // '1A', '2B', etc.
+      return groupBets[slot] ?? null
+    }
+    // Tercero: '3ABCDF' — el mejor tercero según el usuario
+    // Por simplicidad mostramos todos los terceros de esos grupos y el usuario elige
+    return null
   }
 
-  const phaseMatches = matches.filter(m => m.phase === activePhase)
-  const totalBets = Object.keys(bets).length
-  const totalMatches = matches.length
+  // Resolver quién juega en un partido de eliminatorias
+  // basándose en el pick del partido previo
+  function resolveKnockoutSlot(prevMatchNumber: number): number | null {
+    return picks[prevMatchNumber] ?? null
+  }
+
+  // Obtener los dos equipos de un partido r32
+  function getR32Teams(matchDef: typeof R32_MAP[0]): { home: number | null; away: number | null; awaySlot: string } {
+    return {
+      home: resolveGroupSlot(matchDef.home),
+      away: resolveGroupSlot(matchDef.away),
+      awaySlot: matchDef.away,
+    }
+  }
+
+  // Obtener los terceros disponibles para un slot como '3ABCDF'
+  function getThirds(groups: string): Array<{ teamId: number; team: Team }> {
+    return groups.split('').map(g => {
+      const teamId = groupBets[`3${g}`]
+      if (!teamId) return null
+      return { teamId, team: teams[teamId] }
+    }).filter(Boolean) as Array<{ teamId: number; team: Team }>
+  }
 
   if (loading) return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px' }}>
-      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase' }}>Cargando eliminatorias...</p>
+      <p style={{ color: 'rgba(255,255,255,0.3)', fontSize: '13px', letterSpacing: '1px', textTransform: 'uppercase' }}>Cargando...</p>
     </div>
   )
+
+  const totalPicks = Object.keys(picks).length
+  const totalMatches = 31 // 16 + 8 + 4 + 2 + 1
 
   return (
     <div style={{ paddingTop: '24px', paddingBottom: '40px' }}>
@@ -117,177 +197,326 @@ export default function EliminatoriasPage() {
       <div style={{ marginBottom: '20px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
           <span style={{ fontSize: '9px', color: '#C8102E', letterSpacing: '3px', textTransform: 'uppercase', background: 'rgba(200,16,46,0.12)', border: '0.5px solid rgba(200,16,46,0.3)', padding: '3px 8px', borderRadius: '20px' }}>Fase eliminatoria</span>
-          <span style={{ fontSize: '9px', color: '#5b8ff9', letterSpacing: '2px', textTransform: 'uppercase', background: 'rgba(26,86,196,0.12)', border: '0.5px solid rgba(26,86,196,0.3)', padding: '3px 8px', borderRadius: '20px' }}>3 pts exacto · 1 pt ganador</span>
+          <span style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '2px', textTransform: 'uppercase', background: 'rgba(201,168,76,0.12)', border: '0.5px solid rgba(201,168,76,0.3)', padding: '3px 8px', borderRadius: '20px' }}>2→3→4→6→9→+12 pts</span>
         </div>
         <h1 style={{ fontSize: '20px', fontWeight: 500, color: '#ffffff', marginBottom: '3px' }}>Eliminatorias</h1>
-        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>{totalBets} / {totalMatches} partidos apostados</p>
+        <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '6px' }}>
+          El bracket se genera a partir de tus apuestas de grupos
+        </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${totalMatches ? Math.round((totalBets/totalMatches)*100) : 0}%`, background: 'linear-gradient(90deg, #1A56C4 0%, #C9A84C 60%, #C8102E 100%)', borderRadius: '2px', transition: 'width 0.5s' }} />
+            <div style={{ height: '100%', width: `${Math.round((totalPicks/totalMatches)*100)}%`, background: 'linear-gradient(90deg, #1A56C4 0%, #C9A84C 60%, #C8102E 100%)', borderRadius: '2px', transition: 'width 0.5s' }} />
           </div>
-          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', minWidth: '50px', textAlign: 'right' }}>{totalBets} / {totalMatches}</span>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', minWidth: '50px', textAlign: 'right' }}>{totalPicks} / {totalMatches}</span>
         </div>
       </div>
 
-      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '0.5px solid rgba(255,255,255,0.05)', marginBottom: '24px' }}>
-        {PHASES.map(phase => {
-          const phaseMs = matches.filter(m => m.phase === phase.key)
-          const phaseBets = phaseMs.filter(m => bets[m.id]).length
-          const complete = phaseMs.length > 0 && phaseBets === phaseMs.length
-          return (
-            <button key={phase.key} onClick={() => setActivePhase(phase.key)} style={{
-              fontSize: '10px', whiteSpace: 'nowrap',
-              color: activePhase === phase.key ? '#C9A84C' : complete ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.28)',
-              padding: '10px 14px', letterSpacing: '0.5px', textTransform: 'uppercase',
-              background: 'none', border: 'none',
-              borderBottom: activePhase === phase.key ? '2px solid #C9A84C' : '2px solid transparent',
-              cursor: 'pointer', transition: 'all 0.15s',
-            }}>
-              {phase.label}{complete && ' ✓'}
-            </button>
-          )
-        })}
-      </div>
-
-      {phaseMatches.length === 0 ? (
-        <div style={{ background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: '12px', padding: '32px', textAlign: 'center' }}>
-          <div style={{ fontSize: '32px', marginBottom: '12px' }}>⏳</div>
-          <p style={{ fontSize: '13px', color: 'rgba(255,255,255,0.4)' }}>
-            Los equipos de {PHASES.find(p => p.key === activePhase)?.label} se conocerán cuando termine la fase anterior
-          </p>
-          <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', marginTop: '6px' }}>
-            Podrás apostar en cuanto el admin asigne los equipos
-          </p>
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {phaseMatches.map(match => (
-            <MatchCard
-              key={match.id}
-              match={match}
-              bet={bets[match.id]}
-              locked={!bettingOpen}
-              isSaving={saving === match.id}
-              isSaved={saved === match.id}
-              phaseLabel={PHASE_LABEL[match.phase]}
-              onSave={saveBet}
-              onDelete={deleteBet}
-            />
-          ))}
+      {/* Aviso si faltan apuestas de grupos */}
+      {Object.keys(groupBets).length < 48 && (
+        <div style={{ background: 'rgba(201,168,76,0.08)', border: '0.5px solid rgba(201,168,76,0.3)', borderRadius: '10px', padding: '12px 16px', marginBottom: '20px' }}>
+          <p style={{ fontSize: '12px', color: '#C9A84C' }}>⚠️ Completa primero las posiciones de grupo para ver tu bracket completo</p>
+          <p style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', marginTop: '4px' }}>Tienes {Object.keys(groupBets).length} / 48 posiciones apostadas</p>
         </div>
       )}
 
-      <div style={{ textAlign: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.5px', marginTop: '20px' }}>
-        {bettingOpen ? 'Se guarda automáticamente · los equipos aparecen cuando el admin los asigne' : 'Las apuestas están cerradas'}
+      {/* Tabs de fase */}
+      <div style={{ display: 'flex', overflowX: 'auto', borderBottom: '0.5px solid rgba(255,255,255,0.05)', marginBottom: '24px' }}>
+        {['r32','r16','qf','sf','final'].map(phase => (
+          <button key={phase} onClick={() => setActivePhase(phase)} style={{
+            fontSize: '10px', whiteSpace: 'nowrap',
+            color: activePhase === phase ? '#C9A84C' : 'rgba(255,255,255,0.28)',
+            padding: '10px 14px', letterSpacing: '0.5px', textTransform: 'uppercase',
+            background: 'none', border: 'none',
+            borderBottom: activePhase === phase ? '2px solid #C9A84C' : '2px solid transparent',
+            cursor: 'pointer', transition: 'all 0.15s',
+          }}>
+            {phase === 'r32' ? '1/16' : phase === 'r16' ? 'Octavos' : phase === 'qf' ? 'Cuartos' : phase === 'sf' ? 'Semis' : 'Final'}
+          </button>
+        ))}
+      </div>
+
+      {/* Contenido por fase */}
+      <div style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '10px' }}>
+        {PHASE_LABELS[activePhase]}
+        <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '10px', letterSpacing: '1px', textTransform: 'none' }}>· {PHASE_PTS[activePhase]} pts por acierto{activePhase === 'final' ? ' + 12 pts campeón' : ''}</span>
+        <div style={{ flex: 1, height: '0.5px', background: 'linear-gradient(90deg, rgba(201,168,76,0.3), transparent)' }} />
+      </div>
+
+      {activePhase === 'r32' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {R32_MAP.map(matchDef => {
+            const { home: homeId, away: awayId, awaySlot } = getR32Teams(matchDef)
+            const isThird = awaySlot.startsWith('3') && awaySlot.length > 2
+            const thirds = isThird ? getThirds(awaySlot.slice(1)) : []
+            const pick = picks[matchDef.match]
+
+            return (
+              <KnockoutMatch
+                key={matchDef.match}
+                matchNumber={matchDef.match}
+                homeTeam={homeId ? teams[homeId] : null}
+                awayTeam={awayId ? teams[awayId] : null}
+                homeId={homeId}
+                awayId={awayId}
+                isThirdSlot={isThird}
+                thirdOptions={thirds}
+                thirdSlot={awaySlot}
+                pick={pick}
+                locked={!bettingOpen}
+                saving={saving === matchDef.match}
+                onPick={savePick}
+                teams={teams}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {activePhase === 'r16' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {R16_MAP.map(matchDef => {
+            const homeId = resolveKnockoutSlot(matchDef.home)
+            const awayId = resolveKnockoutSlot(matchDef.away)
+            const pick = picks[matchDef.match]
+            return (
+              <KnockoutMatch
+                key={matchDef.match}
+                matchNumber={matchDef.match}
+                homeTeam={homeId ? teams[homeId] : null}
+                awayTeam={awayId ? teams[awayId] : null}
+                homeId={homeId}
+                awayId={awayId}
+                isThirdSlot={false}
+                thirdOptions={[]}
+                thirdSlot=""
+                pick={pick}
+                locked={!bettingOpen}
+                saving={saving === matchDef.match}
+                onPick={savePick}
+                teams={teams}
+                prevMatches={`P${matchDef.home} vs P${matchDef.away}`}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {activePhase === 'qf' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {QF_MAP.map(matchDef => {
+            const homeId = resolveKnockoutSlot(matchDef.home)
+            const awayId = resolveKnockoutSlot(matchDef.away)
+            const pick = picks[matchDef.match]
+            return (
+              <KnockoutMatch
+                key={matchDef.match}
+                matchNumber={matchDef.match}
+                homeTeam={homeId ? teams[homeId] : null}
+                awayTeam={awayId ? teams[awayId] : null}
+                homeId={homeId}
+                awayId={awayId}
+                isThirdSlot={false}
+                thirdOptions={[]}
+                thirdSlot=""
+                pick={pick}
+                locked={!bettingOpen}
+                saving={saving === matchDef.match}
+                onPick={savePick}
+                teams={teams}
+                prevMatches={`P${matchDef.home} vs P${matchDef.away}`}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {activePhase === 'sf' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {SF_MAP.map(matchDef => {
+            const homeId = resolveKnockoutSlot(matchDef.home)
+            const awayId = resolveKnockoutSlot(matchDef.away)
+            const pick = picks[matchDef.match]
+            return (
+              <KnockoutMatch
+                key={matchDef.match}
+                matchNumber={matchDef.match}
+                homeTeam={homeId ? teams[homeId] : null}
+                awayTeam={awayId ? teams[awayId] : null}
+                homeId={homeId}
+                awayId={awayId}
+                isThirdSlot={false}
+                thirdOptions={[]}
+                thirdSlot=""
+                pick={pick}
+                locked={!bettingOpen}
+                saving={saving === matchDef.match}
+                onPick={savePick}
+                teams={teams}
+                prevMatches={`P${matchDef.home} vs P${matchDef.away}`}
+              />
+            )
+          })}
+        </div>
+      )}
+
+      {activePhase === 'final' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {FINAL_MAP.map(matchDef => {
+            const homeId = resolveKnockoutSlot(matchDef.home)
+            const awayId = resolveKnockoutSlot(matchDef.away)
+            const pick = picks[matchDef.match]
+            return (
+              <div key={matchDef.match}>
+                <KnockoutMatch
+                  matchNumber={matchDef.match}
+                  homeTeam={homeId ? teams[homeId] : null}
+                  awayTeam={awayId ? teams[awayId] : null}
+                  homeId={homeId}
+                  awayId={awayId}
+                  isThirdSlot={false}
+                  thirdOptions={[]}
+                  thirdSlot=""
+                  pick={pick}
+                  locked={!bettingOpen}
+                  saving={saving === matchDef.match}
+                  onPick={savePick}
+                  teams={teams}
+                  prevMatches={`P${matchDef.home} vs P${matchDef.away}`}
+                  isFinal
+                />
+                {pick && teams[pick] && (
+                  <div style={{ marginTop: '12px', background: 'rgba(201,168,76,0.08)', border: '0.5px solid rgba(201,168,76,0.3)', borderRadius: '10px', padding: '14px 20px', textAlign: 'center' }}>
+                    <div style={{ fontSize: '28px', fontFamily: "'Noto Color Emoji', sans-serif", marginBottom: '6px' }}>🏆</div>
+                    <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.4)', letterSpacing: '2px', textTransform: 'uppercase', marginBottom: '4px' }}>Tu campeón</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'center' }}>
+                      <span className="flag-emoji" style={{ fontSize: '22px' }}>{teams[pick].flag_emoji}</span>
+                      <span style={{ fontSize: '16px', fontWeight: 500, color: '#C9A84C' }}>{teams[pick].name}</span>
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#C9A84C', marginTop: '6px' }}>9 pts finalista + 12 pts campeón = 21 pts</div>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <div style={{ textAlign: 'center', fontSize: '10px', color: 'rgba(255,255,255,0.15)', letterSpacing: '0.5px', marginTop: '24px' }}>
+        {bettingOpen ? 'Pulsa el equipo para elegirlo · pulsa de nuevo para borrar' : 'Las apuestas están cerradas'}
       </div>
     </div>
   )
 }
 
-function MatchCard({ match, bet, locked, isSaving, isSaved, phaseLabel, onSave, onDelete }: {
-  match: Match; bet?: Bet; locked: boolean
-  isSaving: boolean; isSaved: boolean; phaseLabel: string
-  onSave: (id: number, h: number, a: number) => void
-  onDelete: (id: number) => void
+function KnockoutMatch({
+  matchNumber, homeTeam, awayTeam, homeId, awayId,
+  isThirdSlot, thirdOptions, thirdSlot, pick, locked, saving,
+  onPick, teams, prevMatches, isFinal
+}: {
+  matchNumber: number
+  homeTeam: Team | null; awayTeam: Team | null
+  homeId: number | null; awayId: number | null
+  isThirdSlot: boolean
+  thirdOptions: Array<{ teamId: number; team: Team }>
+  thirdSlot: string
+  pick: number | undefined
+  locked: boolean; saving: boolean
+  onPick: (matchNumber: number, teamId: number) => void
+  teams: Record<number, Team>
+  prevMatches?: string
+  isFinal?: boolean
 }) {
-  const [home, setHome] = useState<number | ''>(bet?.home_goals_bet ?? '')
-  const [away, setAway] = useState<number | ''>(bet?.away_goals_bet ?? '')
-  const hasTeams = !!(match.home_team && match.away_team)
+  const teamBtn = (teamId: number | null, team: Team | null, side: 'home' | 'away') => {
+    if (!teamId || !team) return (
+      <div style={{ flex: 1, padding: '10px 12px', background: 'rgba(255,255,255,0.02)', border: '0.5px solid rgba(255,255,255,0.06)', borderRadius: '8px', textAlign: side === 'home' ? 'right' : 'left' }}>
+        <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>
+          {prevMatches ? `Ganador P${side === 'home' ? prevMatches.split(' vs ')[0].replace('P','') : prevMatches.split(' vs ')[1]}` : 'Por determinar'}
+        </span>
+      </div>
+    )
 
-  useEffect(() => {
-    if (bet) { setHome(bet.home_goals_bet); setAway(bet.away_goals_bet) }
-    else { setHome(''); setAway('') }
-  }, [bet])
-
-  const date = new Date(match.played_at).toLocaleString('es-ES', {
-    timeZone: 'Europe/Madrid', weekday: 'short', day: 'numeric',
-    month: 'short', hour: '2-digit', minute: '2-digit',
-  })
-
-  const inputStyle = (filled: boolean): React.CSSProperties => ({
-    width: '38px', height: '36px',
-    background: filled ? 'rgba(26,86,196,0.1)' : 'rgba(255,255,255,0.04)',
-    border: `0.5px solid ${filled ? 'rgba(26,86,196,0.5)' : 'rgba(255,255,255,0.1)'}`,
-    borderRadius: '6px', color: filled ? '#5b8ff9' : '#ffffff',
-    fontSize: '16px', fontWeight: 500, textAlign: 'center', outline: 'none',
-    opacity: locked || !hasTeams ? 0.4 : 1,
-    cursor: locked || !hasTeams ? 'not-allowed' : 'text',
-  })
-
-  const realResult = match.home_goals !== null && match.away_goals !== null
-  const exactMatch = bet && realResult && bet.home_goals_bet === match.home_goals && bet.away_goals_bet === match.away_goals
-  const correctWinner = bet && realResult && !exactMatch && Math.sign(bet.home_goals_bet - bet.away_goals_bet) === Math.sign(match.home_goals! - match.away_goals!)
+    const selected = pick === teamId
+    return (
+      <button onClick={() => !locked && onPick(matchNumber, teamId)} style={{
+        flex: 1, padding: '10px 12px',
+        background: selected ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.03)',
+        border: `0.5px solid ${selected ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.07)'}`,
+        borderRadius: '8px', cursor: locked ? 'not-allowed' : 'pointer',
+        display: 'flex', alignItems: 'center',
+        gap: '8px', flexDirection: side === 'home' ? 'row-reverse' : 'row',
+        transition: 'all 0.15s', textAlign: side === 'home' ? 'right' : 'left',
+        opacity: locked && !selected ? 0.6 : 1,
+      }}>
+        <span className="flag-emoji" style={{ fontSize: '20px', lineHeight: 1, flexShrink: 0 }}>{team.flag_emoji}</span>
+        <span style={{ fontSize: '12px', fontWeight: selected ? 600 : 400, color: selected ? '#C9A84C' : 'rgba(255,255,255,0.8)' }}>
+          {team.name}
+        </span>
+      </button>
+    )
+  }
 
   return (
     <div style={{
       background: 'rgba(255,255,255,0.02)',
-      border: `0.5px solid ${isSaved ? 'rgba(201,168,76,0.4)' : bet ? 'rgba(26,86,196,0.2)' : 'rgba(255,255,255,0.05)'}`,
-      borderRadius: '10px', padding: '12px 16px',
+      border: `0.5px solid ${pick ? 'rgba(201,168,76,0.2)' : 'rgba(255,255,255,0.05)'}`,
+      borderRadius: '10px', padding: '12px 14px', marginBottom: '2px',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '9px', color: '#C8102E', background: 'rgba(200,16,46,0.15)', border: '0.5px solid rgba(200,16,46,0.3)', padding: '2px 6px', borderRadius: '4px', letterSpacing: '1px' }}>
-            {phaseLabel} · P{match.match_number}
-          </span>
-          <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.2)' }}>{date}</span>
-        </div>
+        <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.25)', letterSpacing: '1px' }}>
+          P{matchNumber}{isFinal ? ' · 🏆 FINAL' : ''}
+        </span>
         <div style={{ fontSize: '11px' }}>
-          {locked ? <span>🔒</span>
-            : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
-            : isSaved ? <span style={{ color: '#C9A84C' }}>✓</span>
-            : bet ? (
-              <button onClick={() => onDelete(match.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'rgba(200,16,46,0.5)', fontSize: '13px', padding: '2px' }}>✕</button>
-            ) : null}
+          {saving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span>
+            : locked ? <span>🔒</span>
+            : pick ? <span style={{ color: '#C9A84C' }}>✓</span>
+            : null}
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: 1, justifyContent: 'flex-end' }}>
-          {match.home_team ? (
-            <>
-              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)', textAlign: 'right' }}>{match.home_team.name}</span>
-              <span className="flag-emoji" style={{ fontSize: '18px', lineHeight: 1 }}>{match.home_team.flag_emoji}</span>
-            </>
-          ) : (
-            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Por determinar</span>
-          )}
+      {/* Si es un slot de tercero con múltiples opciones */}
+      {isThirdSlot && !awayTeam ? (
+        <div>
+          {teamBtn(homeId, homeTeam, 'home')}
+          <div style={{ marginTop: '8px' }}>
+            <div style={{ fontSize: '9px', color: 'rgba(255,255,255,0.3)', letterSpacing: '1px', marginBottom: '6px' }}>
+              Tercero ({thirdSlot.slice(1).split('').join('/')}) — elige cuál pasa:
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+              {thirdOptions.length > 0 ? thirdOptions.map(({ teamId, team }) => {
+                const selected = pick === teamId
+                return (
+                  <button key={teamId} onClick={() => !locked && onPick(matchNumber, teamId)} style={{
+                    display: 'flex', alignItems: 'center', gap: '5px',
+                    padding: '6px 10px', borderRadius: '6px',
+                    background: selected ? 'rgba(201,168,76,0.15)' : 'rgba(255,255,255,0.04)',
+                    border: `0.5px solid ${selected ? 'rgba(201,168,76,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                    color: selected ? '#C9A84C' : 'rgba(255,255,255,0.6)',
+                    fontSize: '12px', cursor: locked ? 'not-allowed' : 'pointer',
+                  }}>
+                    <span className="flag-emoji" style={{ fontSize: '14px' }}>{team.flag_emoji}</span>
+                    <span>{team.name}</span>
+                    <span style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)' }}>3º{team.group_name}</span>
+                  </button>
+                )
+              }) : (
+                <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>
+                  Completa las posiciones de grupo para ver los terceros
+                </span>
+              )}
+            </div>
+          </div>
         </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
-          <input type="number" min="0" max="20" disabled={locked || !hasTeams} value={home}
-            onChange={e => setHome(e.target.value === '' ? '' : Number(e.target.value))}
-            onBlur={() => { if (home !== '' && away !== '' && !locked && hasTeams) onSave(match.id, Number(home), Number(away)) }}
-            style={inputStyle(home !== '')}
-          />
-          <span style={{ color: 'rgba(255,255,255,0.1)', fontSize: '14px' }}>–</span>
-          <input type="number" min="0" max="20" disabled={locked || !hasTeams} value={away}
-            onChange={e => setAway(e.target.value === '' ? '' : Number(e.target.value))}
-            onBlur={() => { if (home !== '' && away !== '' && !locked && hasTeams) onSave(match.id, Number(home), Number(away)) }}
-            style={inputStyle(away !== '')}
-          />
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {teamBtn(homeId, homeTeam, 'home')}
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>vs</span>
+          {teamBtn(awayId, awayTeam, 'away')}
         </div>
+      )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flex: 1 }}>
-          {match.away_team ? (
-            <>
-              <span className="flag-emoji" style={{ fontSize: '18px', lineHeight: 1 }}>{match.away_team.flag_emoji}</span>
-              <span style={{ fontSize: '13px', color: 'rgba(255,255,255,0.8)' }}>{match.away_team.name}</span>
-            </>
-          ) : (
-            <span style={{ fontSize: '12px', color: 'rgba(255,255,255,0.2)', fontStyle: 'italic' }}>Por determinar</span>
-          )}
-        </div>
-      </div>
-
-      {realResult && (
-        <div style={{ marginTop: '8px', textAlign: 'center', fontSize: '11px', color: 'rgba(255,255,255,0.25)' }}>
-          Resultado: {match.home_goals} – {match.away_goals}
-          {bet && (
-            <span style={{ marginLeft: '8px', color: exactMatch ? '#C9A84C' : correctWinner ? '#5b8ff9' : 'rgba(255,255,255,0.2)' }}>
-              · Tu apuesta: {bet.home_goals_bet}–{bet.away_goals_bet}
-              {exactMatch ? ' ✓✓' : correctWinner ? ' ✓' : ' ✗'}
-            </span>
-          )}
+      {pick && teams[pick] && (
+        <div style={{ marginTop: '8px', fontSize: '11px', color: '#C9A84C', textAlign: 'center' }}>
+          Pasa: <span className="flag-emoji">{teams[pick].flag_emoji}</span> {teams[pick].name}
         </div>
       )}
     </div>
