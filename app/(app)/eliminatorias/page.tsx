@@ -306,7 +306,7 @@ export default function EliminatoriasPage() {
                   {isR32 && <span style={{ marginLeft: '6px', color: 'rgba(255,255,255,0.15)' }}>{matchDef.home} vs {matchDef.away}</span>}
                 </span>
                 <span style={{ fontSize: '11px' }}>
-                  {locked ? '🔒' : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span> : pick ? <span style={{ color: '#C9A84C' }}>✓</span> : null}
+                  {!bettingOpen ? '🔒' : isSaving ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span> : pick ? <span style={{ color: '#C9A84C' }}>✓</span> : null}
                 </span>
               </div>
 
