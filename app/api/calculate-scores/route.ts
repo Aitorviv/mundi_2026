@@ -4,29 +4,24 @@ import { NextResponse } from 'next/server'
 // ================================================
 // SISTEMA DE PUNTUACIÓN
 // ================================================
-// Grupos:       1 pt por 1X2 correcto
+// Grupos:       1 pt por 1X2 correcto (calculado desde marcador apostado)
 // 1/16:         2 pts por equipo que pasa acertado
 // Octavos:      3 pts
 // Cuartos:      4 pts
 // Semis:        6 pts
-// Final:        9 pts
-// Campeón:      12 pts (ganador de la final)
+// Final:        9 pts (finalista) + 12 pts (campeón)
 // Goleador:     1 pt por gol + 1 pt extra si es el máximo goleador
 // Portero:      1 pt por portería a 0 (mín 60 min, sin prórroga)
 // Mejor jugador: 4 pts si acierta
 // ================================================
 
 const KNOCKOUT_POINTS: Record<string, number> = {
-  r32:   2,
-  r16:   3,
-  qf:    4,
-  sf:    6,
-  final: 9,
+  r32: 2, r16: 3, qf: 4, sf: 6, final: 9,
 }
 
-function getResult(homeGoals: number, awayGoals: number): 'home' | 'draw' | 'away' {
-  if (homeGoals > awayGoals) return 'home'
-  if (homeGoals < awayGoals) return 'away'
+function get1X2(home: number, away: number): 'home' | 'draw' | 'away' {
+  if (home > away) return 'home'
+  if (home < away) return 'away'
   return 'draw'
 }
 
@@ -50,50 +45,24 @@ export async function POST() {
 
     const { data: matchBets } = await supabase
       .from('match_bets')
-      .select('id, match_id, result_bet')
+      .select('id, match_id, home_goals_bet, away_goals_bet')
       .in('match_id', matchIds)
 
     if (matchBets?.length) {
       for (const bet of matchBets) {
         const match = resultsMap[bet.match_id]
-        const realResult = getResult(match.home_goals, match.away_goals)
-        const pts = bet.result_bet === realResult ? 1 : 0
+        const real1X2 = get1X2(match.home_goals, match.away_goals)
+        const bet1X2 = get1X2(bet.home_goals_bet, bet.away_goals_bet)
+        const pts = real1X2 === bet1X2 ? 1 : 0
         await supabase.from('match_bets').update({ points_earned: pts }).eq('id', bet.id)
       }
     }
   }
 
   // ================================================
-  // 2. PUNTOS DE POSICIONES DE GRUPO
-  // ================================================
-  const { data: standings } = await supabase
-    .from('group_standings')
-    .select('group_name, position, team_id')
-
-  if (standings?.length) {
-    const { data: groupBets } = await supabase
-      .from('group_position_bets')
-      .select('id, group_name, position, team_id')
-
-    if (groupBets?.length) {
-      for (const bet of groupBets) {
-        const real = standings.find(s => s.group_name === bet.group_name && s.position === bet.position)
-        let pts = 0
-        if (real?.team_id === bet.team_id) {
-          pts = 2 // posición exacta
-        } else {
-          const top2 = standings
-            .filter(s => s.group_name === bet.group_name && s.position <= 2)
-            .map(s => s.team_id)
-          if (top2.includes(bet.team_id) && bet.position <= 2) pts = 1
-        }
-        await supabase.from('group_position_bets').update({ points_earned: pts }).eq('id', bet.id)
-      }
-    }
-  }
-
-  // ================================================
-  // 3. PUNTOS DE ELIMINATORIAS (knockout_picks)
+  // 2. PUNTOS DE ELIMINATORIAS (knockout_picks)
+  // El admin asigna el equipo ganador real en cada partido eliminatorio
+  // La puntuación se calcula comparando el pick del usuario con el ganador real
   // ================================================
   const { data: knockoutMatches } = await supabase
     .from('matches')
@@ -104,12 +73,11 @@ export async function POST() {
 
   if (knockoutMatches?.length) {
     for (const match of knockoutMatches) {
-      // El equipo que pasa es el ganador (no hay empate en eliminatorias)
+      // El ganador es el equipo con más goles (no hay empate en eliminatorias)
       const winnerTeamId = match.home_goals > match.away_goals
         ? match.home_team_id
         : match.away_team_id
 
-      // Para la final, el campeón es el ganador y puntúa 12 pts adicionales
       const basePoints = KNOCKOUT_POINTS[match.phase] ?? 0
       const isFinal = match.phase === 'final'
 
@@ -132,7 +100,7 @@ export async function POST() {
   }
 
   // ================================================
-  // 4. PUNTOS ESPECIALES
+  // 3. PUNTOS ESPECIALES
   // ================================================
   const { data: specialResults } = await supabase
     .from('special_results')
@@ -141,7 +109,7 @@ export async function POST() {
   if (specialResults?.length) {
     const { data: specialBets } = await supabase
       .from('special_bets')
-      .select('id, category, player_name')
+      .select('id, participant_id, category, player_name')
 
     if (specialBets?.length) {
       for (const bet of specialBets) {
@@ -152,20 +120,11 @@ export async function POST() {
         let pts = 0
 
         if (bet.category === 'top_scorer') {
-          // 1 pt por cada gol del jugador apostado + 1 pt extra si es el máximo goleador
-          if (nameMatch) {
-            pts = (real.goals_scored ?? 0) + (real.is_winner ? 1 : 0)
-          }
+          if (nameMatch) pts = (real.goals_scored ?? 0) + (real.is_winner ? 1 : 0)
         } else if (bet.category === 'goalkeeper') {
-          // 1 pt por cada portería a 0
-          if (nameMatch) {
-            pts = real.clean_sheets ?? 0
-          }
+          if (nameMatch) pts = real.clean_sheets ?? 0
         } else if (bet.category === 'best_player') {
-          // 4 pts si acierta el mejor jugador
-          if (nameMatch && real.is_winner) {
-            pts = 4
-          }
+          if (nameMatch && real.is_winner) pts = 4
         }
 
         await supabase.from('special_bets').update({ points_earned: pts }).eq('id', bet.id)
@@ -174,7 +133,7 @@ export async function POST() {
   }
 
   // ================================================
-  // 5. RECALCULAR TOTAL POR PARTICIPANTE
+  // 4. RECALCULAR TOTAL POR PARTICIPANTE
   // ================================================
   const { data: participants } = await supabase
     .from('participants')
@@ -182,16 +141,14 @@ export async function POST() {
 
   if (participants?.length) {
     for (const p of participants) {
-      // Sumar todos los puntos
-      const [matchPts, groupPts, knockoutPts, specialPts] = await Promise.all([
+      const [matchPts, knockoutPts, specialPts] = await Promise.all([
         supabase.from('match_bets').select('points_earned').eq('participant_id', p.id),
-        supabase.from('group_position_bets').select('points_earned').eq('participant_id', p.id),
         supabase.from('knockout_picks').select('points_earned').eq('participant_id', p.id),
         supabase.from('special_bets').select('points_earned').eq('participant_id', p.id),
       ])
 
       const sum = (rows: any) => (rows.data ?? []).reduce((acc: number, r: any) => acc + (r.points_earned ?? 0), 0)
-      const total = sum(matchPts) + sum(groupPts) + sum(knockoutPts) + sum(specialPts)
+      const total = sum(matchPts) + sum(knockoutPts) + sum(specialPts)
 
       await supabase.from('participants').update({ total_points: total }).eq('id', p.id)
       totalUpdated++
