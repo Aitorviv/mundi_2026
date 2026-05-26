@@ -41,9 +41,9 @@ const R32: { match: number; home: string; away: string }[] = [
 ]
 
 const R16: { match: number; home: number; away: number }[] = [
-  { match: 89,  home: 73, away: 75 },
+  { match: 89,  home: 73, away: 76 },
   { match: 90,  home: 74, away: 77 },
-  { match: 91,  home: 76, away: 78 },
+  { match: 91,  home: 75, away: 78 },
   { match: 92,  home: 79, away: 80 },
   { match: 93,  home: 83, away: 84 },
   { match: 94,  home: 81, away: 82 },
