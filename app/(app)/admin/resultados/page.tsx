@@ -69,7 +69,27 @@ export default function AdminResultadosPage() {
     const supabase = createClient()
     setSaving(matchId)
     await supabase.from('matches').update({ home_goals: homeGoals, away_goals: awayGoals }).eq('id', matchId)
-    setMatches(prev => prev.map(m => m.id === matchId ? { ...m, home_goals: homeGoals, away_goals: awayGoals } : m))
+    const updatedMatches = matches.map(m => m.id === matchId ? { ...m, home_goals: homeGoals, away_goals: awayGoals } : m)
+    setMatches(updatedMatches)
+
+    // Si es una semifinal, asignar automáticamente el perdedor al partido 3º-4º (P103)
+    const match = matches.find(m => m.id === matchId)
+    if (match?.phase === 'sf') {
+      const loserId = homeGoals > awayGoals ? match.away_team_id : match.home_team_id
+      const thirdMatch = updatedMatches.find(m => m.match_number === 103)
+      if (thirdMatch && loserId) {
+        const side = match.match_number === 101 ? 'home_team_id' : 'away_team_id'
+        await supabase.from('matches').update({ [side]: loserId }).eq('match_number', 103)
+        const loserTeam = teams.find(t => t.id === loserId)
+        setMatches(prev => prev.map(m => {
+          if (m.match_number !== 103) return m
+          return match.match_number === 101
+            ? { ...m, home_team_id: loserId, home_team: loserTeam }
+            : { ...m, away_team_id: loserId, away_team: loserTeam }
+        }))
+      }
+    }
+
     setSaving(null); setSaved(matchId)
     setTimeout(() => setSaved(null), 1500)
   }
