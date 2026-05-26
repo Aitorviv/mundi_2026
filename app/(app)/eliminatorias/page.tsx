@@ -47,8 +47,8 @@ const R16: { match: number; home: number; away: number }[] = [
   { match: 92,  home: 79, away: 80 },
   { match: 93,  home: 83, away: 84 },
   { match: 94,  home: 81, away: 82 },
-  { match: 95,  home: 86, away: 88 },
-  { match: 96,  home: 85, away: 87 },
+  { match: 95,  home: 87, away: 86 },
+  { match: 96,  home: 85, away: 88 },
 ]
 
 const QF: { match: number; home: number; away: number }[] = [
