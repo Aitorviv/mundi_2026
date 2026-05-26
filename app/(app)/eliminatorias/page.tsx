@@ -63,6 +63,10 @@ const SF: { match: number; home: number; away: number }[] = [
   { match: 102, home: 99,  away: 100 },
 ]
 
+const THIRD: { match: number; home: number; away: number }[] = [
+  { match: 103, home: 101, away: 102 }, // perdedores de semis
+]
+
 const FINAL: { match: number; home: number; away: number }[] = [
   { match: 104, home: 101, away: 102 },
 ]
@@ -200,6 +204,19 @@ export default function EliminatoriasPage() {
     return allTeams[teamId] ?? null
   }
 
+  // Resolver perdedor de un partido eliminatorio anterior (para 3º-4º)
+  function resolveLoser(prevMatch: number): Team | null {
+    const winnerId = picks[prevMatch]
+    if (!winnerId) return null
+    // El perdedor es el otro equipo del partido
+    const matchDef = SF.find(m => m.match === prevMatch)
+    if (!matchDef) return null
+    const homeTeam = resolveKnockout(matchDef.home)
+    const awayTeam = resolveKnockout(matchDef.away)
+    if (!homeTeam || !awayTeam) return null
+    return homeTeam.id === winnerId ? awayTeam : homeTeam
+  }
+
   async function savePick(matchNumber: number, teamId: number) {
     if (!bettingOpen) return
     const supabase = createClient()
@@ -233,11 +250,12 @@ export default function EliminatoriasPage() {
   })
 
   const phases = [
-    { key: 'r32', label: '1/16', data: R32, isGroup: true },
-    { key: 'r16', label: 'Octavos', data: R16, isGroup: false },
-    { key: 'qf',  label: 'Cuartos', data: QF, isGroup: false },
-    { key: 'sf',  label: 'Semis',   data: SF, isGroup: false },
-    { key: 'final', label: 'Final', data: FINAL, isGroup: false },
+    { key: 'r32',   label: '1/16',   data: R32,   isGroup: true  },
+    { key: 'r16',   label: 'Octavos', data: R16,  isGroup: false },
+    { key: 'qf',    label: 'Cuartos', data: QF,   isGroup: false },
+    { key: 'sf',    label: 'Semis',   data: SF,   isGroup: false },
+    { key: '3rd',   label: '3º-4º',   data: THIRD, isGroup: false },
+    { key: 'final', label: 'Final',   data: FINAL, isGroup: false },
   ]
 
   if (loading) return (
@@ -257,13 +275,13 @@ export default function EliminatoriasPage() {
         </div>
         <h1 style={{ fontSize: '20px', fontWeight: 500, color: '#ffffff', marginBottom: '3px' }}>Eliminatorias</h1>
         <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '10px' }}>
-          Bracket calculado desde tus marcadores · {totalPicks} / 31 picks
+          Bracket calculado desde tus marcadores · {totalPicks} / 32 picks
         </p>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           <div style={{ flex: 1, height: '2px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${Math.round((totalPicks/31)*100)}%`, background: 'linear-gradient(90deg, #1A56C4 0%, #C9A84C 60%, #C8102E 100%)', borderRadius: '2px', transition: 'width 0.5s' }} />
+            <div style={{ height: '100%', width: `${Math.round((totalPicks/32)*100)}%`, background: 'linear-gradient(90deg, #1A56C4 0%, #C9A84C 60%, #C8102E 100%)', borderRadius: '2px', transition: 'width 0.5s' }} />
           </div>
-          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', minWidth: '50px', textAlign: 'right' }}>{totalPicks}/31</span>
+          <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.3)', minWidth: '50px', textAlign: 'right' }}>{totalPicks}/32</span>
         </div>
       </div>
 
@@ -297,8 +315,13 @@ export default function EliminatoriasPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
         {phases.find(p => p.key === activePhase)?.data.map((matchDef: any) => {
           const isR32 = activePhase === 'r32'
-          const homeTeam = isR32 ? resolveSlot(matchDef.home, matchDef.match) : resolveKnockout(matchDef.home)
-          const awayTeam = isR32 ? resolveSlot(matchDef.away, matchDef.match) : resolveKnockout(matchDef.away)
+          const is3rd = activePhase === '3rd'
+          const homeTeam = isR32 ? resolveSlot(matchDef.home, matchDef.match)
+            : is3rd ? resolveLoser(matchDef.home)
+            : resolveKnockout(matchDef.home)
+          const awayTeam = isR32 ? resolveSlot(matchDef.away, matchDef.match)
+            : is3rd ? resolveLoser(matchDef.away)
+            : resolveKnockout(matchDef.away)
           const pick = picks[matchDef.match]
           const isSav = saving === matchDef.match
 
@@ -314,6 +337,7 @@ export default function EliminatoriasPage() {
                   {isR32 && matchDef.home !== '3rd' && matchDef.away !== '3rd' && (
                     <span style={{ marginLeft: '6px', color: 'rgba(255,255,255,0.12)' }}>{matchDef.home} vs {matchDef.away}</span>
                   )}
+                  {is3rd && <span style={{ marginLeft: '6px', color: 'rgba(255,255,255,0.12)' }}>🥉 3er y 4º puesto</span>}
                 </span>
                 <span style={{ fontSize: '11px' }}>
                   {!bettingOpen ? '🔒' : isSav ? <span style={{ color: 'rgba(255,255,255,0.3)' }}>...</span> : pick ? <span style={{ color: '#C9A84C' }}>✓</span> : null}
@@ -322,17 +346,17 @@ export default function EliminatoriasPage() {
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <TeamButton team={homeTeam} pick={pick} locked={!bettingOpen} side="home"
-                  prevLabel={!isR32 ? `Gan. P${matchDef.home}` : undefined}
+                  prevLabel={is3rd ? `Per. P${matchDef.home}` : !isR32 ? `Gan. P${matchDef.home}` : undefined}
                   onClick={() => homeTeam && bettingOpen && savePick(matchDef.match, homeTeam.id)} />
                 <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.15)', flexShrink: 0 }}>vs</span>
                 <TeamButton team={awayTeam} pick={pick} locked={!bettingOpen} side="away"
-                  prevLabel={!isR32 ? `Gan. P${matchDef.away}` : undefined}
+                  prevLabel={is3rd ? `Per. P${matchDef.away}` : !isR32 ? `Gan. P${matchDef.away}` : undefined}
                   onClick={() => awayTeam && bettingOpen && savePick(matchDef.match, awayTeam.id)} />
               </div>
 
               {pick && allTeams[pick] && (
                 <div style={{ marginTop: '8px', fontSize: '11px', color: '#C9A84C', textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px' }}>
-                  <span style={{ color: 'rgba(255,255,255,0.3)' }}>Pasa:</span>
+                  <span style={{ color: 'rgba(255,255,255,0.3)' }}>{is3rd ? '🥉 3º puesto:' : 'Pasa:'}</span>
                   <span className="flag-emoji" style={{ fontSize: '13px' }}>{allTeams[pick].flag_emoji}</span>
                   <span>{allTeams[pick].name}</span>
                   {activePhase === 'final' && <span style={{ color: 'rgba(255,255,255,0.3)', marginLeft: '4px' }}>🏆</span>}
