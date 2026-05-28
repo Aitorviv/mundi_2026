@@ -49,14 +49,13 @@ export default function AdminEspecialesPage() {
 
   async function recalcTotal(participantId: string, newPts: number, category: string) {
     const supabase = createClient()
-    const current = bets.find(b => b.participant_id === participantId && b.category === category)
-    const { data: allSpecial } = await supabase.from('special_bets').select('points_earned').eq('participant_id', participantId)
-    const { data: matchPts } = await supabase.from('match_bets').select('points_earned').eq('participant_id', participantId)
-    const { data: knockoutPts } = await supabase.from('knockout_picks').select('points_earned').eq('participant_id', participantId)
-    const sum = (rows: any[]) => (rows ?? []).reduce((acc: number, r: any) => acc + (r.points_earned ?? 0), 0)
-    const specialSum = sum(allSpecial ?? []) - (current?.points_earned ?? 0) + newPts
-    const total = specialSum + sum(matchPts ?? []) + sum(knockoutPts ?? [])
-    await supabase.from('participants').update({ total_points: total }).eq('id', participantId)
+    // Leer el total actual del participante
+    const { data: participant } = await supabase
+      .from('participants').select('total_points').eq('id', participantId).single()
+    const currentPts = bets.find(b => b.participant_id === participantId && b.category === category)?.points_earned ?? 0
+    const diff = newPts - currentPts
+    const newTotal = (participant?.total_points ?? 0) + diff
+    await supabase.from('participants').update({ total_points: newTotal }).eq('id', participantId)
   }
 
   async function addPoint(participantId: string, category: string, delta: number) {
