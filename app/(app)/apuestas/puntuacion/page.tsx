@@ -166,6 +166,11 @@ export default function PuntuacionPage() {
           Ir a mis apuestas →
         </Link>
       </div>
+
+      {/* GIF */}
+      <div style={{ marginTop: '32px', textAlign: 'center' }}>
+        <img src="/doue.gif" alt="Doué" style={{ width: '100%', maxWidth: '320px', borderRadius: '16px' }} />
+      </div>
     </div>
   )
 }
