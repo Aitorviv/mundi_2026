@@ -74,8 +74,8 @@ export default function ApuestasPage() {
   ]
 
   const totalDone = stats.matchBets + stats.knockoutPicks + stats.specialBets
-  const totalAll = 72 + 31 + 3
-  const pct = Math.round((totalDone / totalAll) * 100)
+  const totalAll = 72 + 32 + 3
+  const pct = Math.min(100, Math.round((totalDone / totalAll) * 100))
 
   return (
     <div style={{ paddingTop: '24px', paddingBottom: '40px' }}>
@@ -83,7 +83,20 @@ export default function ApuestasPage() {
       {/* Cabecera */}
       <div style={{ marginBottom: '24px' }}>
         <div style={{ fontSize: '9px', color: '#C9A84C', letterSpacing: '3px', textTransform: 'uppercase', marginBottom: '6px' }}>Mundial 2026</div>
-        <h1 style={{ fontSize: '22px', fontWeight: 500, color: '#ffffff', marginBottom: '4px' }}>Mis apuestas</h1>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+          <h1 style={{ fontSize: '22px', fontWeight: 500, color: '#ffffff', margin: 0 }}>Mis apuestas</h1>
+          <Link href="/apuestas/puntuacion" style={{ textDecoration: 'none', flexShrink: 0 }}>
+            <div style={{
+              background: 'rgba(201,168,76,0.12)',
+              border: '1px solid rgba(201,168,76,0.4)',
+              borderRadius: '10px', padding: '8px 14px',
+              display: 'flex', alignItems: 'center', gap: '6px',
+            }}>
+              <span style={{ fontSize: '16px', fontFamily: "'Noto Color Emoji', sans-serif" }}>📋</span>
+              <span style={{ fontSize: '12px', fontWeight: 600, color: '#C9A84C' }}>Puntuación</span>
+            </div>
+          </Link>
+        </div>
         <p style={{ fontSize: '12px', color: 'rgba(255,255,255,0.3)', marginBottom: '12px' }}>
           {bettingOpen
             ? `Plazo hasta el ${deadlineStr}`
@@ -175,9 +188,6 @@ export default function ApuestasPage() {
           <div>4️⃣ Elige quién pasa en cada cruce eliminatorio</div>
           <div>5️⃣ Añade tus apuestas de goleador, portero y mejor jugador</div>
         </div>
-        <Link href="/apuestas/puntuacion" style={{ display: 'inline-block', marginTop: '12px', fontSize: '12px', color: '#C9A84C', textDecoration: 'none', background: 'rgba(201,168,76,0.1)', border: '0.5px solid rgba(201,168,76,0.3)', padding: '6px 14px', borderRadius: '20px' }}>
-          📋 Ver sistema de puntuación completo →
-        </Link>
       </div>
     </div>
   )
