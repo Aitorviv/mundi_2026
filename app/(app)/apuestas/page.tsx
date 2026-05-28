@@ -175,6 +175,9 @@ export default function ApuestasPage() {
           <div>4️⃣ Elige quién pasa en cada cruce eliminatorio</div>
           <div>5️⃣ Añade tus apuestas de goleador, portero y mejor jugador</div>
         </div>
+        <Link href="/apuestas/puntuacion" style={{ display: 'inline-block', marginTop: '12px', fontSize: '12px', color: '#C9A84C', textDecoration: 'none', background: 'rgba(201,168,76,0.1)', border: '0.5px solid rgba(201,168,76,0.3)', padding: '6px 14px', borderRadius: '20px' }}>
+          📋 Ver sistema de puntuación completo →
+        </Link>
       </div>
     </div>
   )
